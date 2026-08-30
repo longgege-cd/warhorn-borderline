@@ -444,6 +444,9 @@ input.text-input:focus {
   color: #9a937f;
 }
 .name-screen .rules-box summary { color: #d8cba2; letter-spacing: 2px; font-family: "SimSun", "STSong", serif; }
+.name-screen .rules-box .rules-body { max-height: 200px; overflow-y: auto; padding-right: 6px; }
+.name-screen .rules-box .rules-body::-webkit-scrollbar { width: 6px; }
+.name-screen .rules-box .rules-body::-webkit-scrollbar-thumb { background: #3a3f33; border-radius: 3px; }
 .name-screen .feedback { color: #7d7464; }
 .name-screen .lang-switch { justify-content: center; }
 .rules-box {
