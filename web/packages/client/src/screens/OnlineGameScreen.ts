@@ -124,6 +124,7 @@ export class OnlineGameScreen {
         <div class="game-topbar">
           <span class="topbar-title">${tpl("title.online", topRole)}</span>
           <span class="topbar-status" id="status"></span>
+          <button class="btn btn-sm" id="btn-rules">${t("rules.btn")}</button>
         </div>
         <div class="board-wrapper">
           <div class="board-container" id="board-container"></div>
@@ -139,6 +140,12 @@ export class OnlineGameScreen {
         </div>
       </div>
       <div class="side-panel side-right" id="panel-white"></div>
+      <div class="modal-mask" id="rules-modal" hidden>
+        <div class="modal-rules">
+          <div class="modal-rules-header"><span>${t("rules.title")}</span><button class="btn btn-sm" id="rules-close">${t("close")}</button></div>
+          <div class="modal-rules-body"><ol>${Array.from({ length: 9 }, (_, i) => i + 1).map((n) => `<li>${t("rules." + n)}</li>`).join("")}</ol></div>
+        </div>
+      </div>
     `;
     root.querySelector("#board-container")!.appendChild(this.boardCanvas.canvas);
     root.querySelector("#panel-black")!.appendChild(this.blackPanel.el);
@@ -155,6 +162,10 @@ export class OnlineGameScreen {
     root.querySelector("#btn-special")!.addEventListener("click", () => this._onSpecialToggle());
     root.querySelector("#btn-resign")!.addEventListener("click", () => this._onResign());
     root.querySelector("#btn-lobby")!.addEventListener("click", () => this._onBackToLobby());
+    const rulesModal = root.querySelector<HTMLElement>("#rules-modal")!;
+    root.querySelector("#btn-rules")!.addEventListener("click", () => { rulesModal.hidden = false; });
+    root.querySelector("#rules-close")!.addEventListener("click", () => { rulesModal.hidden = true; });
+    rulesModal.addEventListener("click", (e) => { if (e.target === rulesModal) rulesModal.hidden = true; });
 
     const sparkleBtn = root.querySelector("#btn-sparkle") as HTMLButtonElement;
     const syncSparkle = () => {

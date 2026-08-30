@@ -187,23 +187,13 @@ class App {
         </div>
       </div>
       <div class="app-version" data-load-version></div>
-      <details class="rules-box">
-        <summary>${t("rules.btn")}</summary>
-        <div class="rules-body">
-          <div class="rules-title">${t("rules.title")}</div>
-          <ol>
-            <li>${t("rules.1")}</li>
-            <li>${t("rules.2")}</li>
-            <li>${t("rules.3")}</li>
-            <li>${t("rules.4")}</li>
-            <li>${t("rules.5")}</li>
-            <li>${t("rules.6")}</li>
-            <li>${t("rules.7")}</li>
-            <li>${t("rules.8")}</li>
-            <li>${t("rules.9")}</li>
-          </ol>
+      <button class="btn" id="menu-rules-btn">${t("rules.btn")}</button>
+      <div class="modal-mask" id="menu-rules-modal" hidden>
+        <div class="modal-rules">
+          <div class="modal-rules-header"><span>${t("rules.title")}</span><button class="btn btn-sm" id="menu-rules-close">${t("close")}</button></div>
+          <div class="modal-rules-body"><ol>${Array.from({ length: 9 }, (_, i) => i + 1).map((n) => `<li>${t("rules." + n)}</li>`).join("")}</ol></div>
         </div>
-      </details>
+      </div>
       <div class="feedback">${t("feedback")}：<a href="mailto:shamdom888@outlook.com">shamdom888@outlook.com</a></div>
     `;
     this.root.appendChild(screen);
@@ -216,6 +206,12 @@ class App {
         this._showNameScreen();
       });
     });
+
+    // 游戏规则弹窗
+    const menuRulesModal = screen.querySelector<HTMLElement>("#menu-rules-modal")!;
+    screen.querySelector("#menu-rules-btn")!.addEventListener("click", () => { menuRulesModal.hidden = false; });
+    screen.querySelector("#menu-rules-close")!.addEventListener("click", () => { menuRulesModal.hidden = true; });
+    menuRulesModal.addEventListener("click", (e) => { if (e.target === menuRulesModal) menuRulesModal.hidden = true; });
 
     let mode: Mode = "local";
     let difficulty: AIDifficulty = 1; // 默认普通
