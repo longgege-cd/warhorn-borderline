@@ -1,0 +1,51 @@
+# Godot 缓存/导入
+.godot/
+*.import
+.godot/
+
+# 引擎本体（绝不入库）
+Godot*.exe
+Godot*.exe.*
+*.pck
+*.zip
+
+# 运行/调试日志
+*.txt
+*.log
+!战争号角-边境线规则文档.txt
+godot_pid.txt
+
+# 临时截图/生成物
+_*.png
+_*.py
+
+# 临时下载的古谱全集（已精选入库 sgf/）
+.tmp_sgf/
+
+# 测试输出
+test_result.log
+
+# OS
+Thumbs.db
+.DS_Store
+
+# 训练生成物/备份（不入库，体积或为中间产物）
+web/packages/engine/src/AI.ts.bak
+web/packages/engine/assets/
+
+# 服务端运行时数据（私钥/账户/天梯/账本/对局/状态，定位防丢失与隐私，不入库）
+web/packages/server/data/keys.json
+web/packages/server/data/accounts.json
+web/packages/server/data/leaderboard.json
+web/packages/server/data/ledger.json
+web/packages/server/data/games.json
+web/packages/server/data/state.json
+
+# Godot 桌面版残留构建/导入产物（web 版已移除）
+build/
+export_presets.cfg
+*.gd.uid
+tests/
+
+# 外部下载参考古谱（体积大，非项目源码）
+_tsumego_ref/
