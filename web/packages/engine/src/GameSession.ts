@@ -644,14 +644,15 @@ export class GameSession {
 
     // 歼灭分：提吃发生在「提子方」的防御区（己境/边境）
     const moverCounter = this.counters.get(moverColor) ?? { annihilate: 0, normalLost: 0, specialLost: 0 };
-    // 兵力补充：在己方地盘（防御区）吃掉对方普通棋子可补充兵力，一子补一兵力，不超过兵力上限。
+    // 兵力补充：仅在对方地盘或边境（攻击区）提吃对方普通棋子可补充兵力，一子补一兵力，不超过兵力上限。
     // 等价于减少己方已落子数（stonesPlaced），clamp 到下限0（即可用兵力最多回到 pieceLimit）。
     let replenish = 0;
     for (const cap of res.captured) {
-      if (!isDefenseZone(cap.row, moverColor)) continue;
-      moverCounter.annihilate += 1;
+      if (isDefenseZone(cap.row, moverColor)) {
+        moverCounter.annihilate += 1;
+      }
       // 特殊子不计入兵力上限，提吃不触发兵力补充
-      if (!specialIdxs?.has(cap.row * size + cap.col)) replenish += 1;
+      if (isAttackZone(cap.row, moverColor) && !specialIdxs?.has(cap.row * size + cap.col)) replenish += 1;
     }
     this.counters.set(moverColor, moverCounter);
     if (replenish > 0) {

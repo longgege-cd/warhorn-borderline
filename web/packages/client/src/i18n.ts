@@ -38,7 +38,7 @@ const dict: Record<string, { zh: string; en: string }> = {
   "rules.6": { zh: "战损分：己方被提或被围困的棋子扣分。", en: "Casualty: your own captured/sieged stones lose points." },
   "rules.7": { zh: "每方每局可虚手 2 次，不可连续虚手；双方连续虚手自动终局。", en: "2 passes per side, no consecutive passes; two consecutive passes end the game." },
   "rules.8": { zh: "总分 = 占领 + 防御 − 战损；白方 +0.5 贴目（仅终局胜负判定）。", en: "Total = occupation + defense − casualty; White gets +0.5 komi for final result." },
-  "rules.9": { zh: "兵力补充：在己方领土/边境提吃对方普通棋子，每子补充 1 兵力（不可超出兵力上限；提吃特殊部队不补）。", en: "Piece replenishment: capturing an enemy normal stone in your own half/border restores 1 piece (never above the piece limit; special forces do not count)." },
+  "rules.9": { zh: "兵力补充：在对方地盘/边境提吃对方普通棋子，每子补充 1 兵力（不可超出兵力上限；提吃特殊部队不补）。", en: "Piece replenishment: capturing an enemy normal stone in the enemy half/border restores 1 piece (never above the piece limit; special forces do not count)." },
   "fx.sparkleOff": { zh: "关闭动画", en: "Disable FX" },
   "fx.sparkleOn": { zh: "开启动画", en: "Enable FX" },
   "feedback": { zh: "意见反馈", en: "Feedback" },
