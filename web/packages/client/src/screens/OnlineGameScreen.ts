@@ -52,6 +52,8 @@ export class OnlineGameScreen {
   private specialBtn!: HTMLButtonElement;
   // 本视角可见的特种棋子索引（服务端下发；不含对方未现形隐子）
   private visibleSpecials: Set<number> = new Set();
+  // 据点（v9.0）：本视角可见的据点棋子索引（服务端下发，已按迷雾过滤）
+  private strongholds: Set<number> = new Set();
 
   private logEntries: ScoreLogEntry[] = [];
 
@@ -72,6 +74,7 @@ export class OnlineGameScreen {
     this.whiteName = payload.whiteName;
     this.board = new BoardModel(payload.initialState.size);
     this.board.grid = new Uint8Array(payload.initialState.grid);
+    if (payload.strongholds) this.strongholds = new Set(payload.strongholds);
     this.timerMax = payload.baseTimeSec;
     // 按开局参数初始化读秒制计时（服务器每秒广播覆盖）
     this.timers = {
@@ -314,6 +317,7 @@ export class OnlineGameScreen {
     if (p.specialForces !== undefined) this.specialForces = p.specialForces;
     if (p.specialUses) this.specialUses = p.specialUses;
     this.visibleSpecials = p.specials ? new Set(p.specials) : new Set();
+    if (p.strongholds) this.strongholds = new Set(p.strongholds);
 
     const o = p.outcome;
     if (o.ply !== undefined) this.currentPly = o.ply;
@@ -493,7 +497,8 @@ export class OnlineGameScreen {
       fogActive,
       this.specialForces ? this.visibleSpecials : undefined,
       scores?.black.total,
-      scores?.white.total
+      scores?.white.total,
+      this.strongholds
     );
 
     if (scores) {
@@ -602,6 +607,8 @@ export class OnlineGameScreen {
             <tr><td class="label">${t("result.territory")}</td><td>${result.black.breakdown.occupationTerritory}</td><td>${result.white.breakdown.occupationTerritory}</td></tr>
             <tr><td class="label">${t("result.annihilate")}</td><td>${result.black.breakdown.defenseAnnihilate}</td><td>${result.white.breakdown.defenseAnnihilate}</td></tr>
             <tr><td class="label">${t("result.siege")}</td><td>${result.black.breakdown.defenseSiege}</td><td>${result.white.breakdown.defenseSiege}</td></tr>
+            <tr><td class="label">${t("result.breaking")}</td><td>${result.black.breakdown.breakingReward}</td><td>${result.white.breakdown.breakingReward}</td></tr>
+            <tr><td class="label">${t("result.stronghold")}</td><td>${result.black.breakdown.strongholdReward}</td><td>${result.white.breakdown.strongholdReward}</td></tr>
             <tr><td class="label">${t("result.casualty")}</td><td>${result.black.breakdown.casualtyLoss + result.black.breakdown.casualtySpecial}</td><td>${result.white.breakdown.casualtyLoss + result.white.breakdown.casualtySpecial}</td></tr>
             <tr><td class="label">${t("result.komi")}</td><td>-${result.black.komi}</td><td>0</td></tr>
             <tr><td class="label">${t("finalScore")}</td><td class="final">${result.black.final}</td><td class="final">${result.white.final}</td></tr>

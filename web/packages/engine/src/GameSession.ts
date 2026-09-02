@@ -12,7 +12,7 @@ import {
   Color, opponent, KOMI_DEFAULT, PIECE_LIMIT,
   isDefenseZone, isAttackZone, ownZone, Zone,
   PASS_LIMIT_PER_GAME, PASS_COOLDOWN_TURNS,
-  DEPLOY_PHASE_MOVES, FOG_DAWN_PLY,
+  DEPLOY_PHASE_MOVES, DEPLOY_STONES_PER_SIDE, FOG_DAWN_PLY,
 } from "./Const.js";
 import { BoardModel, Point, Group } from "./BoardModel.js";
 import { GoRules, MoveResult, NO_KO } from "./GoRules.js";
@@ -20,9 +20,15 @@ import { visionCells, visibleGrid, fogCells } from "./FogUtils.js";
 import { SiegeDetector } from "./SiegeDetector.js";
 import { TerritoryDetector, Enclosure } from "./TerritoryDetector.js";
 import {
-  ScoreCalculator, CountersMap, makeCounters,
+  ScoreCalculator, CountersMap, makeCounters, makeBreakdown,
 } from "./ScoreCalculator.js";
 import type { MoveOutcome, FinalResult, ScoreBreakdown, ScoreSide, MoveRecord } from "@warhorn/shared";
+
+// 布局阶段前4手自动成据点：每方2枚
+export const STRONGHOLD_PER_SIDE = 2;
+const STRONGHOLD_CAPTURE_REWARD = 10; // 吃掉1枚据点 +10
+const BREAK_REWARD = 6; // 破坏奖励：对方有效包围圈失效 +6
+const SIEGE_REPLENISH_PER_EVERY = 2; // 围困补兵：新进入围困每满2子补1兵
 
 export interface GameSessionOptions {
   komi?: number;
@@ -67,6 +73,14 @@ export class GameSession {
 
   koPoint: Point = NO_KO;
   lastFinalResult: FinalResult | null = null;
+
+  // 据点（v9.0）：布局阶段每方前2枚棋子自动成为据点。剩余据点 idx 集合。
+  // 提吃据点 +10（计入 counters.stronghold）；一方据点全失 → 立即终局。
+  strongholds: Map<Color, Set<number>> = new Map([[Color.BLACK, new Set()], [Color.WHITE, new Set()]]);
+  // 本手产生的待触发状态（v9.0 事件结算用）
+  private _pendingStrongholdLoss: Color = Color.EMPTY; // 本手致某方据点全失
+  private _movePreSieged: Set<number> = new Set();     // 落子前围困棋子 idx 集合（围困补兵 diff）
+  private _movePreProfitable: Map<Color, Set<string>> = new Map(); // 落子前对方正在得分的包围圈签名（破坏奖励 diff）
 
   // 逐手棋谱（在线持久化到 games.json，供对局存档/回放）
   moveHistory: MoveRecord[] = [];
@@ -136,6 +150,10 @@ export class GameSession {
     this.koPoint = NO_KO;
     this.lastOutcome = null;
     this.lastFinalResult = null;
+    this.strongholds = new Map([[Color.BLACK, new Set()], [Color.WHITE, new Set()]]);
+    this._pendingStrongholdLoss = Color.EMPTY;
+    this._movePreSieged = new Set();
+    this._movePreProfitable = new Map([[Color.BLACK, new Set()], [Color.WHITE, new Set()]]);
     this.moveHistory = [];
     this.fogRevealed.clear();
     this._undoStack = [];
@@ -168,6 +186,11 @@ export class GameSession {
   }
 
   scores(): { black: ScoreBreakdown; white: ScoreBreakdown } {
+    // v9.0 布局阶段不结算不显示；第5手落子后按当时棋盘状态统一结算。
+    // 仅冻结展示，counters 仍正常累计（提吃等事件），ply ≥ 5 后自动显示真实分数。
+    if (this.enableDeployPhase && this.ply <= DEPLOY_PHASE_MOVES) {
+      return { black: makeBreakdown(), white: makeBreakdown() };
+    }
     let res: { black: ScoreBreakdown; white: ScoreBreakdown };
     if (this._useCache) {
       this._ensureCache();
@@ -256,6 +279,7 @@ export class GameSession {
 
     // 取行棋前快照（遭遇战/正常落子均在此之后变更棋盘）
     this._beginUndoSnapshot();
+    this._capturePreMoveSnapshot();
 
     // 特种遭遇战：落点被对方隐藏特种棋子占据（mover 不可见）
     if (this.specialForces && !this.board.isEmpty(row, col)) {
@@ -300,6 +324,15 @@ export class GameSession {
     this.stonesPlaced.set(color, (this.stonesPlaced.get(color) ?? 0) + 1);
     this.stonesOnBoard.set(color, (this.stonesOnBoard.get(color) ?? 0) + 1);
 
+    // v9.0 据点：布局阶段每方前2枚落子自动成为据点
+    if (this.isInDeployPhase() && (this.stonesPlaced.get(color) ?? 0) <= DEPLOY_STONES_PER_SIDE) {
+      const placed = outcome.placed!;
+      this.strongholds.get(color)!.add(placed.row * this.board.size + placed.col);
+    }
+
+    // v9.0 围困补兵 + 破坏奖励（依赖落子前后状态 diff）
+    this._settlePostMoveScores(color);
+
     this._commitTurn(outcome, color, true);
     return outcome;
   }
@@ -317,6 +350,11 @@ export class GameSession {
     }
     if (this.toMove !== color) {
       outcome.reason = "非该方行棋";
+      return outcome;
+    }
+    // v9.0 布局阶段禁虚手
+    if (this.enableDeployPhase && this.ply < DEPLOY_PHASE_MOVES) {
+      outcome.reason = "布局阶段禁止虚手";
       return outcome;
     }
 
@@ -504,9 +542,10 @@ export class GameSession {
     outcome.capturedColor = res.capturedColor;
     this.koPoint = res.koPoint;
     this._processCaptures(res, color);
-    this.stonesPlaced.set(color, (this.stonesPlaced.get(color) ?? 0) + 1);
-    this.stonesOnBoard.set(color, (this.stonesOnBoard.get(color) ?? 0) + 1);
-    this._exposeAdjacentSpecials(color, landing.row, landing.col, outcome);
+        this.stonesPlaced.set(color, (this.stonesPlaced.get(color) ?? 0) + 1);
+        this.stonesOnBoard.set(color, (this.stonesOnBoard.get(color) ?? 0) + 1);
+        this._settlePostMoveScores(color);
+        this._exposeAdjacentSpecials(color, landing.row, landing.col, outcome);
     return true;
   }
 
@@ -628,31 +667,47 @@ export class GameSession {
   }
 
   // ====== 内部 ======
+  // v9.0 提吃结算（规则书第9章顺序）：
+  //   1.被提方战损+1/子  2.围困分扣除(状态分,实时重算处理)
+  //   3.提吃方吃子分:被提子位于对方领土/边境 → +4/子
+  //   4.被提棋子是据点 → 提吃方额外+10  5.补兵:被提子位于己方领土/边境 → 补1兵/子
+  //   6.破坏奖励(见 _settlePostMoveScores)  7.据点全失终局(见 _commitTurn)
   private _processCaptures(res: MoveResult, moverColor: Color): void {
     const capturedColor = res.capturedColor;
     if (capturedColor === Color.EMPTY || res.captured.length === 0) return;
-    const counter = this.counters.get(capturedColor) ?? { annihilate: 0, normalLost: 0, specialLost: 0 };
+    const counter = this.counters.get(capturedColor) ?? { annihilate: 0, breakFlag: 0, stronghold: 0, normalLost: 0, specialLost: 0 };
     const size = this.board.size;
     const specialIdxs = this.specialStones.get(capturedColor);
+
+    // 步骤1: 被提方战损 +1/子（据点棋子免战损）
+    const strongholdSet = this.strongholds.get(capturedColor);
     for (const cap of res.captured) {
-      if (specialIdxs?.has(cap.row * size + cap.col)) counter.specialLost += 1;
+      const cidx = cap.row * size + cap.col;
+      if (strongholdSet?.has(cidx)) continue; // 提吃据点不计战损
+      if (specialIdxs?.has(cidx)) counter.specialLost += 1;
       else counter.normalLost += 1;
     }
     this.counters.set(capturedColor, counter);
     // 被提子离盘：扣减该方当前棋盘子数
     this.stonesOnBoard.set(capturedColor, Math.max(0, (this.stonesOnBoard.get(capturedColor) ?? 0) - res.captured.length));
 
-    // 歼灭分：提吃发生在「提子方」的防御区（己境/边境）
-    const moverCounter = this.counters.get(moverColor) ?? { annihilate: 0, normalLost: 0, specialLost: 0 };
-    // 兵力补充：仅在对方地盘或边境（攻击区）提吃对方普通棋子可补充兵力，一子补一兵力，不超过兵力上限。
-    // 等价于减少己方已落子数（stonesPlaced），clamp 到下限0（即可用兵力最多回到 pieceLimit）。
+    const moverCounter = this.counters.get(moverColor) ?? { annihilate: 0, breakFlag: 0, stronghold: 0, normalLost: 0, specialLost: 0 };
+    // 兵力补充：仅当被提棋子位于「提吃方己方领土/边境」(防御区)补1兵/子；特殊子不受限。
     let replenish = 0;
     for (const cap of res.captured) {
-      if (isDefenseZone(cap.row, moverColor)) {
+      const cidx = cap.row * size + cap.col;
+      // 步骤4: 据点被提吃 → +10，并从该方据点集合移除
+      if (this.strongholds.get(capturedColor)?.has(cidx)) {
+        this.strongholds.get(capturedColor)!.delete(cidx);
+        moverCounter.stronghold += 1;
+        if (this.strongholds.get(capturedColor)!.size === 0) this._pendingStrongholdLoss = capturedColor;
+      }
+      // 步骤3: 吃子分——被提子位于对方领土/边境(攻击区)才 +4/子
+      if (isAttackZone(cap.row, moverColor)) {
         moverCounter.annihilate += 1;
       }
-      // 特殊子不计入兵力上限，提吃不触发兵力补充
-      if (isAttackZone(cap.row, moverColor) && !specialIdxs?.has(cap.row * size + cap.col)) replenish += 1;
+      // 步骤5: 补兵——被提子位于己方领土/边境(防御区)补1兵/子
+      if (isDefenseZone(cap.row, moverColor) && !specialIdxs?.has(cidx)) replenish += 1;
     }
     this.counters.set(moverColor, moverCounter);
     if (replenish > 0) {
@@ -660,6 +715,80 @@ export class GameSession {
       this.stonesPlaced.set(moverColor, Math.max(0, placed - replenish));
       this.replenishTotal.set(moverColor, (this.replenishTotal.get(moverColor) ?? 0) + replenish);
     }
+  }
+
+  // 落子前快照：围困集合 + 对方正在得分的包围圈签名（供围困补兵/破坏奖励 diff）
+  private _capturePreMoveSnapshot(): void {
+    // 克隆(AI搜索)禁用缓存，跳过昂贵的事件 diff，仅计分不计事件
+    if (!this._useCache) return;
+    this._movePreSieged = this._siegedIdxSet();
+    this._movePreProfitable = this._profitableEncSignatures();
+  }
+
+  // 落子后事件结算（v9.0）：围困补兵 + 破坏奖励
+  // 调用时机：棋盘已变更、缓存已失效后可安全地直接重算。
+  private _settlePostMoveScores(moverColor: Color): void {
+    if (!this._useCache) return;
+    this._invalidateCache();
+
+    // 围困补兵（规则1.4）：新进入围困状态的棋子，位于「围困方己方领土/边境」时，
+    // 每满 2 子补 1 兵力（余数不累计，一次性，不超上限）。
+    const newSieged = this._siegedIdxSet();
+    const siegedReplenish: Map<Color, number> = new Map([[Color.BLACK, 0], [Color.WHITE, 0]]);
+    if (newSieged.size > this._movePreSieged.size) {
+      for (const idx of newSieged) {
+        if (this._movePreSieged.has(idx)) continue; // 非新进入
+        const r = Math.floor(idx / this.board.size);
+        const c = idx % this.board.size;
+        const sc = this.board.getAt(r, c);
+        if (sc === Color.EMPTY) continue;
+        const besieger = opponent(sc);
+        if (isDefenseZone(r, besieger)) siegedReplenish.set(besieger, (siegedReplenish.get(besieger) ?? 0) + 1);
+      }
+    }
+    for (const [besieger, n] of siegedReplenish) {
+      const add = Math.floor(n / SIEGE_REPLENISH_PER_EVERY);
+      if (add <= 0) continue;
+      const placed = this.stonesPlaced.get(besieger) ?? 0;
+      this.stonesPlaced.set(besieger, Math.max(0, placed - add));
+      this.replenishTotal.set(besieger, (this.replenishTotal.get(besieger) ?? 0) + add);
+    }
+
+    // 破坏奖励（规则6）：对方正在得分的包围圈失效 → mover +6/圈（嵌套每层独立）
+    const newProfitable = this._profitableEncSignatures();
+    const opp = opponent(moverColor);
+    for (const sig of this._movePreProfitable.get(opp)!) {
+      if (!newProfitable.get(opp)!.has(sig)) {
+        const mc = this.counters.get(moverColor)!;
+        mc.breakFlag += 1;
+      }
+    }
+  }
+
+  // 当前盘面被围困棋子 idx 集合
+  private _siegedIdxSet(): Set<number> {
+    const size = this.board.size;
+    const set = new Set<number>();
+    for (const g of SiegeDetector.solveDeadAlive(this.board).sieged) {
+      for (const s of g.stones) set.add(s.row * size + s.col);
+    }
+    return set;
+  }
+
+  // 当前盘面「正在得分」的包围圈签名（owner → 边界棋子idx有序串）。
+  // 正在得分 = 该圈在所有者攻击区有可计分空点。用边界组合标识一圈（破坏判断用）。
+  private _profitableEncSignatures(): Map<Color, Set<string>> {
+    const map: Map<Color, Set<string>> = new Map([[Color.BLACK, new Set()], [Color.WHITE, new Set()]]);
+    for (const e of TerritoryDetector.enclosures(this.board)) {
+      let scoring = false;
+      for (const p of e.points) {
+        if (isAttackZone(p.row, e.color)) { scoring = true; break; }
+      }
+      if (!scoring) continue;
+      const border = Array.from(e.borderStonesIdx).sort((a, b) => a - b);
+      map.get(e.color)!.add(border.join(","));
+    }
+    return map;
   }
 
   // 遭遇战整手收尾：标记成功并转账，随即提交（含黎明检测）
@@ -709,6 +838,18 @@ export class GameSession {
       if (this._undoStack.length > GameSession.MAX_UNDO) this._undoStack.shift();
     }
     this._invalidateCache();
+
+    // v9.0 据点全失终局（规则7）：一方2枚据点均被提吃，立即终局
+    if (this._pendingStrongholdLoss !== Color.EMPTY) {
+      const loser = this._pendingStrongholdLoss;
+      this._pendingStrongholdLoss = Color.EMPTY;
+      const reason = `${loser === Color.BLACK ? "黑" : "白"}方据点全失，立即终局`;
+      this._endGame(reason);
+      outcome.gameOver = true;
+      outcome.result = this.lastFinalResult ?? undefined;
+      this._emitMove(outcome);
+      return;
+    }
 
     // 终局提前判定：落后方兵力用尽且领先方仍有剩余兵力 → 直接终局
     // （依据：实时总分判定领先/落后，不含贴目/终局特种奖励；平局不触发；
@@ -800,6 +941,7 @@ export class GameSession {
         this._processCaptures(res, color);
         this.stonesPlaced.set(color, (this.stonesPlaced.get(color) ?? 0) + 1);
         this.stonesOnBoard.set(color, (this.stonesOnBoard.get(color) ?? 0) + 1);
+        this._settlePostMoveScores(color);
       } else {
         landed = null;
       }
@@ -807,7 +949,7 @@ export class GameSession {
 
     // 3. 弹子失败（或被八格均不可落）：棋子被消灭
     if (!landed) {
-      const counter = this.counters.get(color) ?? { annihilate: 0, normalLost: 0, specialLost: 0 };
+      const counter = this.counters.get(color) ?? { annihilate: 0, breakFlag: 0, stronghold: 0, normalLost: 0, specialLost: 0 };
       counter.normalLost += 1;
       this.counters.set(color, counter);
       this.stonesPlaced.set(color, (this.stonesPlaced.get(color) ?? 0) + 1);
@@ -929,7 +1071,8 @@ export class GameSession {
   }
 
   private _totalOf(b: ScoreBreakdown): number {
-    return b.occupationTerritory + b.occupationEfficiency + b.defenseAnnihilate + b.defenseSiege + b.casualtyLoss + b.casualtySpecial;
+    return b.occupationTerritory + b.occupationEfficiency + b.defenseAnnihilate + b.defenseSiege +
+      b.breakingReward + b.strongholdReward + b.casualtyLoss + b.casualtySpecial;
   }
 
   // ====== 悔棋 ======
@@ -979,6 +1122,8 @@ export class GameSession {
       lastOutcome: this.lastOutcome,
       fogEnabled: this.fogEnabled,
       fogRevealed: new Set(this.fogRevealed),
+      strongholds: new Map(Array.from(this.strongholds.entries()).map(([k, v]) => [k, new Set(v)])),
+      pendingStrongholdLoss: this._pendingStrongholdLoss,
     };
   }
 
@@ -1005,6 +1150,8 @@ export class GameSession {
     this.lastOutcome = snap.lastOutcome;
     this.fogEnabled = snap.fogEnabled;
     this.fogRevealed = new Set(snap.fogRevealed);
+    this.strongholds = new Map(Array.from(snap.strongholds.entries()).map(([k, v]) => [k, new Set(v)]));
+    this._pendingStrongholdLoss = snap.pendingStrongholdLoss;
     this._invalidateCache();
   }
 
@@ -1037,6 +1184,7 @@ export class GameSession {
     );
     s.koPoint = { ...this.koPoint };
     s.fogRevealed = new Set(this.fogRevealed);
+    s.strongholds = new Map(Array.from(this.strongholds.entries()).map(([k, v]) => [k, new Set(v)]));
     s._useCache = false; // 克隆禁用缓存避免频繁失效
     return s;
   }
@@ -1063,4 +1211,6 @@ interface GameSnapshot {
   lastOutcome: MoveOutcome | FinalResult | null;
   fogEnabled: boolean;
   fogRevealed: Set<number>;
+  strongholds: Map<Color, Set<number>>;
+  pendingStrongholdLoss: Color;
 }

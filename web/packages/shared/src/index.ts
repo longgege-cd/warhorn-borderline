@@ -84,15 +84,17 @@ export interface MoveOutcome {
 
 // 分数明细
 export interface ScoreBreakdown {
-  occupationLive: number; // 遗留字段（v7.3 已取消活子分，恒为0）
-  occupationTerritory: number; // 占领分：圈内空点+2/点，被围困棋子+1/子
-  occupationEfficiency: number; // 效率奖励 2×(⌊有效围空点数/4⌋)
-  defenseAnnihilate: number; // 歼灭分 +3/子（己方领土/边境）
-  defenseSiege: number; // 围困分 +2/子（己方领土/边境）
-  siegeReward: number; // 围困奖励 2×⌊被围困组群棋子数/3⌋，每个被围困组群独立计算
+  occupationLive: number; // 遗留字段（已取消活子分，恒为0）
+  occupationTerritory: number; // 占领分：围空(圈内空点+2、被围困棋子+2,对方领土/边境) + 围困分(+3/子状态分,同计于占领)
+  occupationEfficiency: number; // 效率奖励（备用规则，恒为0）
+  defenseAnnihilate: number; // 吃子分 +4/子（被提子位于对方领土/边境）；展示归类计入占领分
+  defenseSiege: number; // 遗留字段（v9.0 围困分已并入占领分，恒为0）
+  siegeReward: number; // 围困奖励（备用规则，恒为0）
+  breakingReward: number; // 破坏奖励 +6/圈（对方正在得分的包围圈失效）
+  strongholdReward: number; // 据点奖励 +10/据点（提吃对方据点）
   casualtyLoss: number; // 普通战损 -1/子（负值）
   casualtySpecial: number; // 特种战损 -6/子（负值，MVP不用）
-  specialReward: number; // 特种部队成功奖励（参与围困/围空→占领分总额+50%，终局一次性）
+  specialReward: number; // 特种部队成功奖励（占占领分总额+50%，终局一次性）
 }
 
 export interface ScoreSide {
@@ -175,6 +177,7 @@ export interface GameStartPayload {
   pieceLimit: number; // 本局每方兵力上限
   fogEnabled: boolean; // 本局是否启用战争迷雾（可选规则）
   specialForces: boolean; // 本局是否启用特种部队（可选规则，与迷雾互斥）
+  strongholds?: number[]; // 双方据点棋子索引（已按接收方视角过滤迷雾隐藏；供棋盘据点标记渲染）
 }
 
 // 读秒制计时快照（围棋比赛：主时 + 读秒N次）
@@ -203,6 +206,7 @@ export interface GameUpdatePayload {
   specialUses?: { black: number; white: number }; // 双方已发动次数（每局上限2）
   specialOwn?: number[]; // 接收方自己的未暴露隐子索引（供己方高亮渲染）
   specials?: number[]; // 接收方视角可见的特种子索引（己方未现形 + 双方已现形；不含对方未现形隐子）
+  strongholds?: number[]; // 双方据点棋子索引（已按接收方视角过滤迷雾隐藏；供棋盘据点标记渲染）
 }
 
 // 断线重连：客户端请求恢复对局

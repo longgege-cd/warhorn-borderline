@@ -209,6 +209,8 @@ export class BoardCanvas {
   // 特种部队标记：该视角可见的特种棋子索引（己方未现形 + 双方已现形）。
   // 渲染时叠加在对应棋子上；不包含对方未现形隐子 → 不会泄露其位置。
   private specialIdx: Set<number> = new Set();
+  // 据点（v9.0）：双方布局阶段前2枚棋子自动成据点，金色圆环标记
+  private strongholds: Set<number> = new Set();
   private hoverPos: { row: number; col: number } | null = null;
   private currentColor: Color = Color.BLACK;
   // 战争迷雾（可选规则）：fogActive 时在 fogCells 覆盖半透明浅灰迷雾
@@ -346,7 +348,8 @@ export class BoardCanvas {
     fogActive?: boolean,
     visibleSpecials?: Set<number>,
     scoreBlack?: number,
-    scoreWhite?: number
+    scoreWhite?: number,
+    strongholdIdxs?: Set<number>
   ): void {
     this.grid = grid;
     this.lastMove = lastMove;
@@ -358,6 +361,7 @@ export class BoardCanvas {
       for (const s of g.stones) this.siegedStones.add(s.row * BOARD_SIZE + s.col);
     }
     this.specialIdx = visibleSpecials ?? new Set();
+    this.strongholds = strongholdIdxs ?? new Set();
     this.currentColor = currentColor;
     this.fogCells = fogCells ?? new Set();
     this.fogActive = fogActive ?? false;
@@ -366,6 +370,8 @@ export class BoardCanvas {
     this.influence = influenceRenderData(this._board());
     // 盘面变化 → 静态层需重建
     this.staticDirty = true;
+    // 据点出现时确保呼吸动画循环持续（含无其他活跃特效的情况）
+    if (this.strongholds.size > 0) this._startAnimLoop();
     this.render();
   }
 
@@ -500,6 +506,9 @@ export class BoardCanvas {
     // 打吃（剩最后一口气）呼吸灯提示（迷雾下关闭：脉冲可能落到隐藏隐子区域，暴露其位置）
     if (!this.fogActive) this._drawAtariMarkers();
 
+    // 据点呼吸灯光环（随时间脉动：光晕 + 呼吸光环 + 涟漪扩散）
+    this._drawStrongholdBreathing();
+
     // 特效叠加层（迷雾下关闭：提子/围困等脉冲动画可能标记出迷雾区隐藏位置）
     if (!this.fogActive) this._drawEffectOverlays();
 
@@ -627,6 +636,8 @@ export class BoardCanvas {
         if (this.specialIdx.has(idx)) this._drawSpecialMark(c, r, ctx);
       }
     }
+
+    // 8b. 据点标记：移至动态层 _drawStrongholdBreathing（呼吸灯特效，画面随时间脉动）
 
     // 9. 围困棋子标记（棋子中心的红色 ×，参考原项目 _draw_siege_cross_icon）
     if (this.showSieged) {
@@ -830,6 +841,63 @@ export class BoardCanvas {
       ctx.beginPath();
       ctx.arc(cx, cy, radius * 1.02, 0, Math.PI * 2);
       ctx.stroke();
+    }
+  }
+
+  // 据点呼吸灯光环（v9.0）：金色光晕呼吸 + 主光环脉动 + 涟漪扩散
+  private _drawStrongholdBreathing(): void {
+    if (this.strongholds.size === 0) return;
+    const ctx = this.ctx;
+    const cs = this.cellSize;
+    const pad = this.padding;
+    const size = BOARD_SIZE;
+    // 呼吸节奏：2.6s 周期（慢，更显庄严）
+    const pulse = 0.5 + 0.5 * Math.sin(this.time * (Math.PI * 2) / 2.6);
+    for (const idx of this.strongholds) {
+      const r = Math.floor(idx / size);
+      const c = idx % size;
+      const cx = pad + c * cs;
+      const cy = pad + r * cs;
+      const rad = cs * 0.46;
+
+      // 外层金色光晕（呼吸扩缩，柔和羽化）
+      const haloR = rad * (1.45 + pulse * 0.2);
+      const glow = ctx.createRadialGradient(cx, cy, rad * 0.5, cx, cy, haloR);
+      glow.addColorStop(0, `rgba(255, 208, 80, ${(0.4 * pulse + 0.12).toFixed(3)})`);
+      glow.addColorStop(1, "rgba(255, 208, 80, 0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(cx, cy, haloR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 主光环（金 → 亮白随呼吸，线宽随脉动）
+      ctx.strokeStyle = `rgba(255, 222, 130, ${(0.55 + 0.45 * pulse).toFixed(3)})`;
+      ctx.lineWidth = Math.max(2, cs * (0.07 + 0.05 * pulse));
+      ctx.beginPath();
+      ctx.arc(cx, cy, rad * (1.02 + pulse * 0.1), 0, Math.PI * 2);
+      ctx.stroke();
+
+      // 涟漪扩散环（从棋边缘向外淡出，两圈交替）
+      const ripplePhase = (this.time * 0.5) % 1;
+      for (const k of [0, 1]) {
+        const rt = (ripplePhase + k * 0.5) % 1;
+        const rr = rad * (1.05 + rt * 0.7);
+        const ra = (1 - rt) * 0.5;
+        ctx.strokeStyle = `rgba(255, 200, 90, ${ra.toFixed(3)})`;
+        ctx.lineWidth = Math.max(1.5, cs * 0.04);
+        ctx.beginPath();
+        ctx.arc(cx, cy, rr, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // 顶部三角旗（据点标识，金色，随呼吸微亮）
+      ctx.fillStyle = `rgba(255, 190, 80, ${(0.7 + 0.3 * pulse).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - rad - 2);
+      ctx.lineTo(cx - cs * 0.12, cy - rad - cs * 0.26);
+      ctx.lineTo(cx + cs * 0.12, cy - rad - cs * 0.26);
+      ctx.closePath();
+      ctx.fill();
     }
   }
 
@@ -1148,6 +1216,7 @@ export class BoardCanvas {
         this.effectOverlays.length > 0 ||
         this.borderPulse ||
         this.atariStones.size > 0 ||
+        this.strongholds.size > 0 ||
         this.deployPhase ||
         (this.sparkleEnabled && (this.time % SPARKLE_PERIOD) < SPARKLE_WINDOW);
       if (!hasActive && this.hoverPos === null) {

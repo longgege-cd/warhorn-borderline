@@ -35,6 +35,10 @@ export class GameScreen {
   private timerInterval: number | null = null;
   private logEntries: ScoreLogEntry[] = [];
   private gameOver: boolean = false;
+  // 得分日志分项基准（上一手本方 breakdown + 围困子数）
+  private prevScoreLine: { black: ScoreBreakdown; white: ScoreBreakdown } | null = null;
+  private prevSiegedCnt: { black: number; white: number } = { black: 0, white: 0 };
+  private prevReplenish: { black: number; white: number } = { black: 0, white: 0 };
 
   // 特效状态缓存（落子前快照，用于对比围空/围困变化）
   private prevEnclosures: Enclosure[] = [];
@@ -439,6 +443,30 @@ export class GameScreen {
     const prevEntry = [...this.logEntries].reverse().find((e) => e.color === moverColor);
     const scoreBefore = prevEntry ? prevEntry.scoreAfter : 0;
 
+    // 分项增量：围困/围空/吃子/破坏围空/据点/战损
+    const b = scores[mySide];
+    const pb = this.prevScoreLine?.[mySide];
+    const curSiegedCnt = { black: 0, white: 0 };
+    for (const g of this.session.siegedGroups()) {
+      const besiegerSide = g.color === Color.BLACK ? "white" : "black";
+      curSiegedCnt[besiegerSide] += g.stones.length;
+    }
+    // 围困分在 v9.0 计入 occupationTerritory（+3/子，状态分）：拆出围困增量，其余视为围空增量
+    const siegeDelta =
+      (curSiegedCnt[mySide] - (this.prevSiegedCnt[mySide] ?? 0)) * 3;
+    const territoryDelta = pb
+      ? b.occupationTerritory - pb.occupationTerritory - siegeDelta
+      : b.occupationTerritory - siegeDelta;
+    const deltas = {
+      siege: siegeDelta,
+      territory: territoryDelta,
+      capture: pb ? b.defenseAnnihilate - pb.defenseAnnihilate : b.defenseAnnihilate,
+      breaking: pb ? b.breakingReward - pb.breakingReward : b.breakingReward,
+      stronghold: pb ? b.strongholdReward - pb.strongholdReward : b.strongholdReward,
+      casualty: pb ? b.casualtyLoss - pb.casualtyLoss : b.casualtyLoss,
+      replenish: this.session.replenishOf(moverColor as Color) - (this.prevReplenish[mySide] ?? 0),
+    };
+
     const action: ScoreLogEntry["action"] = outcome.passed ? "pass" : "move";
     const entry: ScoreLogEntry = {
       ply: outcome.ply ?? this.session.ply,
@@ -448,8 +476,14 @@ export class GameScreen {
       captures: outcome.captures?.length ?? 0,
       scoreBefore,
       scoreAfter: myScore,
+      breakdown: deltas,
     };
     this.logEntries.push(entry);
+
+    // 更新分项基准
+    this.prevScoreLine = { black: scores.black, white: scores.white };
+    this.prevSiegedCnt = curSiegedCnt;
+    this.prevReplenish[mySide] = this.session.replenishOf(moverColor as Color);
   }
 
   private _refresh(): void {
@@ -484,7 +518,8 @@ export class GameScreen {
       fogActive,
       this.specialForces ? this.session.visibleSpecialsOf(viewColor) : undefined,
       bt,
-      wt
+      wt,
+      this.session.strongholds ? this._visibleStrongholds(viewColor) : undefined
     );
 
     const isActive = (c: Color) => this.session.toMove === c && !this.gameOver;
@@ -705,7 +740,22 @@ export class GameScreen {
   }
 
   private _calcTotal(b: ScoreBreakdown): number {
-    return b.occupationTerritory + b.occupationEfficiency + b.defenseAnnihilate + b.defenseSiege + b.casualtyLoss + b.casualtySpecial;
+    return b.occupationTerritory + b.occupationEfficiency + b.defenseAnnihilate + b.defenseSiege + b.breakingReward + b.strongholdReward + b.casualtyLoss + b.casualtySpecial;
+  }
+
+  // 当前视角可见的据点棋子索引（迷雾下对方半场被覆盖 → grid 该格为空 → 过滤不渲染）
+  private _visibleStrongholds(viewColor: Color): Set<number> {
+    const idxs = new Set<number>();
+    const grid = this.session.board.grid;
+    const size = this.session.board.size;
+    for (const color of [Color.BLACK, Color.WHITE]) {
+      const set = this.session.strongholds?.get(color);
+      if (!set) continue;
+      for (const i of set) {
+        if (grid[i] !== Color.EMPTY) idxs.add(i);
+      }
+    }
+    return idxs;
   }
 
   // ====== 终局 ======
@@ -734,6 +784,8 @@ export class GameScreen {
             <tr><td class="label">${t("result.territory")}</td><td>${result.black.breakdown.occupationTerritory}</td><td>${result.white.breakdown.occupationTerritory}</td></tr>
             <tr><td class="label">${t("result.annihilate")}</td><td>${result.black.breakdown.defenseAnnihilate}</td><td>${result.white.breakdown.defenseAnnihilate}</td></tr>
             <tr><td class="label">${t("result.siege")}</td><td>${result.black.breakdown.defenseSiege}</td><td>${result.white.breakdown.defenseSiege}</td></tr>
+            <tr><td class="label">${t("result.breaking")}</td><td>${result.black.breakdown.breakingReward}</td><td>${result.white.breakdown.breakingReward}</td></tr>
+            <tr><td class="label">${t("result.stronghold")}</td><td>${result.black.breakdown.strongholdReward}</td><td>${result.white.breakdown.strongholdReward}</td></tr>
             <tr><td class="label">${t("result.casualty")}</td><td>${result.black.breakdown.casualtyLoss + result.black.breakdown.casualtySpecial}</td><td>${result.white.breakdown.casualtyLoss + result.white.breakdown.casualtySpecial}</td></tr>
             <tr><td class="label">${t("result.komi")}</td><td>-${result.black.komi}</td><td>0</td></tr>
             <tr><td class="label">${t("finalScore")}</td><td class="final">${result.black.final}</td><td class="final">${result.white.final}</td></tr>

@@ -309,6 +309,18 @@ export class SiegeDetector {
     const sim = SiegeDetector._simulatePlace(board, row, col, color);
     if (sim.captures.length > 0) return false;
 
+    // 条件4（标准围棋真眼）：眼位所有对角顶点须为界外或己方棋子；
+    // 对角为空点（对方随时可填入破坏）或为对方棋子（对方依托该子渗透眼位）⇒ 假眼。
+    const diagonals: Array<[number, number]> = [
+      [row - 1, col - 1], [row - 1, col + 1],
+      [row + 1, col - 1], [row + 1, col + 1],
+    ];
+    for (const [dr, dc] of diagonals) {
+      if (dr < 0 || dr >= size || dc < 0 || dc >= size) continue; // 界外 ⇒ 有效
+      if (board.grid[dr * size + dc] === color) continue;         // 己方 ⇒ 有效
+      return false;                                               // 空/对方 ⇒ 假眼
+    }
+
     return true;
   }
 

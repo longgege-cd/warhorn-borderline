@@ -25,6 +25,15 @@ export interface ScoreLogEntry {
   captures: number;
   scoreBefore: number; // 本方该手前总分
   scoreAfter: number; // 本方该手后总分
+  breakdown?: {
+    siege: number; // 围困 +3/子（负=围困解除减分）
+    territory: number; // 围空 +2/点（负=围空减退）
+    capture: number; // 吃子 +4/子
+    breaking: number; // 破坏围空 +6/圈
+    stronghold: number; // 据点 +10/据点
+    casualty: number; // 战损 -1/子（负）
+    replenish: number; // 补兵 +1/子（提吃防御区普通子 / 围困新入，正数）
+  };
 }
 
 interface PanelState {
@@ -168,8 +177,10 @@ export class ScorePanel {
   /** 更新分数/计时/状态 */
   update(state: PanelState): void {
     const b = state.breakdown;
-    const occ = b.occupationTerritory + b.occupationEfficiency;
-    const def = b.defenseAnnihilate + b.defenseSiege;
+    // 占领分：围空 + 围困(并占occupationTerritory) + 吃子(歼灭)；围困不再入防御分
+    const occ = b.occupationTerritory + b.occupationEfficiency + b.defenseAnnihilate;
+    // 防御分：仅破坏奖励（围困已并入占领分，defenseSiege 恒为0）
+    const def = b.breakingReward + b.defenseSiege;
     const cas = Math.abs(b.casualtyLoss + b.casualtySpecial);
 
     // 总分闪烁判定
@@ -236,9 +247,9 @@ export class ScorePanel {
 
   private _determineFlashColor(b: ScoreBreakdown, delta: number): string {
     if (delta > 0) {
-      const defDelta = b.defenseAnnihilate + b.defenseSiege;
-      if (defDelta > 0) return "var(--sp-gold-bright)"; // 防御分 → 亮金
-      return "var(--sp-warm-gold)"; // 占领分 → 暖金
+      const defDelta = b.breakingReward;
+      if (defDelta > 0) return "var(--sp-gold-bright)"; // 破坏奖励(防御分) → 亮金
+      return "var(--sp-warm-gold)"; // 占领分(围空/围困/吃子) → 暖金
     }
     if (delta < 0) return "var(--sp-red-war)"; // 战损 → 红
     return "transparent";
@@ -279,11 +290,29 @@ export class ScorePanel {
     const delta = e.scoreAfter - e.scoreBefore;
     const sign = delta >= 0 ? "+" : "";
     const scoreStr = `${e.scoreBefore}→${e.scoreAfter}(${sign}${delta})`;
-    const text = `${String(e.ply).padStart(3, " ")}. ${actionLabel.padEnd(4, " ")} ${posStr.padEnd(4, " ")} ${capStr.padEnd(4, " ")} ${scoreStr}`;
+    const detStr = this._breakdownStr(e);
+    const text = `${String(e.ply).padStart(3, " ")}. ${actionLabel.padEnd(4, " ")} ${posStr.padEnd(4, " ")} ${capStr.padEnd(4, " ")} ${scoreStr}${detStr ? "  " + detStr : ""}`;
     let colorClass = "sp-log-neutral";
     if (delta > 0) colorClass = "sp-log-pos";
     else if (delta < 0) colorClass = "sp-log-neg";
     return `<div class="sp-log-item ${colorClass}">${this._escape(text)}</div>`;
+  }
+
+  // 得分分项标注：仅显示非零项。围困为负视为「围困解除」减分，战损为负单独标注
+  private _breakdownStr(e: ScoreLogEntry): string {
+    const b = e.breakdown;
+    if (!b) return "";
+    const parts: string[] = [];
+    if (b.siege > 0) parts.push(`${t("log.siege")}+${b.siege}`);
+    else if (b.siege < 0) parts.push(`${t("log.siegeBroken")}-${-b.siege}`);
+    if (b.territory > 0) parts.push(`${t("log.territory")}+${b.territory}`);
+    else if (b.territory < 0) parts.push(`${t("log.territory")}-${-b.territory}`);
+    if (b.capture > 0) parts.push(`${t("log.eat")}+${b.capture}`);
+    if (b.breaking > 0) parts.push(`${t("log.breaking")}+${b.breaking}`);
+    if (b.stronghold > 0) parts.push(`${t("log.stronghold")}+${b.stronghold}`);
+    if (b.casualty < 0) parts.push(`${t("log.casualty")}-${-b.casualty}`);
+    if (b.replenish > 0) parts.push(`${t("log.replenish")}+${b.replenish}`);
+    return parts.join(" ");
   }
 
   private _actionLabel(action: ScoreLogEntry["action"]): string {

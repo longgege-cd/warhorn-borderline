@@ -504,6 +504,7 @@ export class GameRoom {
       },
       lastMove: this._lastPlaced(),
       fogCells,
+      strongholds: this._visibleStrongholds(grid),
       specialUses: specUses,
       specialOwn,
       specials,
@@ -527,14 +528,13 @@ export class GameRoom {
     const fogActive = this._session.isFogActive();
     // 迷雾活跃时：迷雾负责隐藏所有视野外棋子（含隐子），特种数据照常下发
     if (fogActive) {
+      const grid = Array.from(this._session.visibleGridOf(color));
       return {
         ...base,
         outcome: this._sanitizeSpecialOutcome(base.outcome, color),
-        board: {
-          size: BOARD_SIZE,
-          grid: Array.from(this._session.visibleGridOf(color)),
-        },
+        board: { size: BOARD_SIZE, grid },
         fogCells: [...this._session.fogCellsOf(color)],
+        strongholds: this._visibleStrongholds(grid),
         specialForces: this._settings.specialForces || undefined,
         specialUses: this._settings.specialForces
           ? {
@@ -552,14 +552,13 @@ export class GameRoom {
     }
     // 迷雾消散或无迷雾：特种部队负责隐藏对方未暴露隐子
     if (this._settings.specialForces) {
+      const grid = Array.from(this._session.specialVisibleGrid(color));
       return {
         ...base,
         outcome: this._sanitizeSpecialOutcome(base.outcome, color),
-        board: {
-          size: BOARD_SIZE,
-          grid: Array.from(this._session.specialVisibleGrid(color)),
-        },
+        board: { size: BOARD_SIZE, grid },
         fogCells: undefined,
+        strongholds: this._visibleStrongholds(grid),
         specialForces: true,
         specialUses: {
           black: this._session.specialUses.get(Color.BLACK) ?? 0,
@@ -569,7 +568,17 @@ export class GameRoom {
         specials: [...this._session.visibleSpecialsOf(color)],
       };
     }
-    return { ...base, board: this._serializeBoard(), fogCells: undefined };
+    const grid = this._session.board.serialize();
+    return { ...base, board: this._serializeBoard(), fogCells: undefined, strongholds: this._visibleStrongholds(grid) };
+  }
+
+  // 接收方视角可见的据点棋子索引（迷雾下对方半场被覆盖 → grid 该格为空 → 过滤不渲染）
+  private _visibleStrongholds(grid: number[]): number[] {
+    const idxs: number[] = [];
+    const push = (set: Set<number>) => { for (const i of set) if (grid[i] !== Color.EMPTY) idxs.push(i); };
+    push(this._session.strongholds.get(Color.BLACK) ?? new Set());
+    push(this._session.strongholds.get(Color.WHITE) ?? new Set());
+    return idxs;
   }
 
   // 特种部署对部署方以外的视角：隐藏部署落点（placed/specialDeployAt），避免暴露隐子位置
@@ -633,12 +642,15 @@ export class GameRoom {
   }
 
   // 由 ScoreBreakdown 构造 ScoreSide（盘中实时分数：total - komi）
+  // 总分需与引擎实时总分（GameSession._totalOf）保持一致，含破坏/据点奖励
   private _scoreSide(breakdown: ScoreBreakdown, isBlack: boolean): ScoreSide {
     const total =
       breakdown.occupationTerritory +
       breakdown.occupationEfficiency +
       breakdown.defenseAnnihilate +
       breakdown.defenseSiege +
+      breakdown.breakingReward +
+      breakdown.strongholdReward +
       breakdown.casualtyLoss +
       breakdown.casualtySpecial;
     const komi = isBlack ? this._session.komi : 0;

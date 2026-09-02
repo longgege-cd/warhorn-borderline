@@ -3,8 +3,8 @@
 
 export const BOARD_SIZE = 19;
 export const BORDER_ROW = 9; // 0基：第10行 = 边境线
-export const PIECE_LIMIT = 120; // 每方兵力上限 v7.3（与桌面端 Const.gd 默认一致）
-export const KOMI_DEFAULT = 0.5; // 白方贴目（黑方扣贴目）
+export const PIECE_LIMIT = 90; // 每方兵力上限 v9.0
+export const KOMI_DEFAULT = 5; // 白方终局 +5 贴目（黑方扣 5）
 
 export const Color = {
   EMPTY: 0,

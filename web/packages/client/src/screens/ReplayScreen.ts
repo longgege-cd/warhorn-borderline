@@ -33,6 +33,7 @@ interface ReplaySnapshot {
   toMove: Color;
   scoreBlack: number;
   scoreWhite: number;
+  strongholds: Set<number>;
 }
 
 const AUTOPLAY_MS = 600;
@@ -45,7 +46,9 @@ function calcTotal(b: ScoreBreakdown): number {
     b.defenseAnnihilate +
     b.defenseSiege +
     b.casualtyLoss +
-    b.casualtySpecial
+    b.casualtySpecial +
+    b.breakingReward +
+    b.strongholdReward
   );
 }
 
@@ -194,12 +197,20 @@ export class ReplayScreen {
 
   private _snap(session: GameSession, placed: { row: number; col: number } | null): ReplaySnapshot {
     const scores = session.scores();
+    // 公开回放全盘可见：合并双方据点，仅保留棋盘上仍占据的棋子
+    const strongholds = new Set<number>();
+    for (const color of [Color.BLACK, Color.WHITE]) {
+      const set = session.strongholds?.get(color);
+      if (!set) continue;
+      for (const i of set) if (session.board.grid[i] !== Color.EMPTY) strongholds.add(i);
+    }
     return {
       grid: session.board.grid.slice(),
       lastMove: placed && placed.row >= 0 ? { row: placed.row, col: placed.col } : null,
       toMove: session.toMove,
       scoreBlack: calcTotal(scores.black),
       scoreWhite: calcTotal(scores.white),
+      strongholds,
     };
   }
 
@@ -217,7 +228,8 @@ export class ReplayScreen {
       false,
       undefined,
       s.scoreBlack,
-      s.scoreWhite
+      s.scoreWhite,
+      s.strongholds
     );
 
     const total = this.snapshots.length;

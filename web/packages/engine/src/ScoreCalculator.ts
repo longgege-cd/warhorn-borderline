@@ -10,7 +10,9 @@ import { TerritoryDetector, Enclosure } from "./TerritoryDetector.js";
 import type { ScoreBreakdown, ScoreSide, FinalResult } from "@warhorn/shared";
 
 export interface Counters {
-  annihilate: number; // 歼灭分累计（实际提吃次数）
+  annihilate: number; // 吃子分累计（实际提吃次数）
+  breakFlag: number; // 破坏奖励累计（对方有效包围圈失效次数，+6/次）
+  stronghold: number; // 据点奖励累计（提吃对方据点次数，+10/次）
   normalLost: number; // 普通子被提次数
   specialLost: number; // 特种部队被提次数（MVP 不用，保留接口）
 }
@@ -19,8 +21,8 @@ export type CountersMap = Map<Color, Counters>;
 
 export function makeCounters(): CountersMap {
   return new Map([
-    [Color.BLACK, { annihilate: 0, normalLost: 0, specialLost: 0 }],
-    [Color.WHITE, { annihilate: 0, normalLost: 0, specialLost: 0 }],
+    [Color.BLACK, { annihilate: 0, breakFlag: 0, stronghold: 0, normalLost: 0, specialLost: 0 }],
+    [Color.WHITE, { annihilate: 0, breakFlag: 0, stronghold: 0, normalLost: 0, specialLost: 0 }],
   ]);
 }
 
@@ -32,6 +34,8 @@ export function makeBreakdown(): ScoreBreakdown {
     defenseAnnihilate: 0,
     defenseSiege: 0,
     siegeReward: 0,
+    breakingReward: 0,
+    strongholdReward: 0,
     casualtyLoss: 0,
     casualtySpecial: 0,
     specialReward: 0,
@@ -115,13 +119,15 @@ export class ScoreCalculator {
     // 现改为备用存档，仅文档保留（规则书"备用规则"），实时计分不再累加该奖励，occupationEfficiency 恒为0。
     //（记录仅存档，不再计分；occupationEfficiency 字段保留值为0）
 
-    // 步骤5: 围困分（围困棋子按所在区域计分，+2/子于围困方己境/边境）
+    // 步骤5: 围困分（状态分）。被围困棋子位于「围困方对方领土/边境」(攻击区)才得分，+3/子。
+    // 状态分语义：实时重算当前盘面围困组群，进入围困(计入)与解除/提走(不计入)自动扣回，无需手动回溯。
+    // v9.0 归类：围困分计入「占领分」（occupationTerritory），不再计入防御分 defenSiege（恒为0，字段保留兼容）。
     for (const g of siegedGroupsList) {
       const color = g.color; // 被围困方
       const opp = opponent(color); // 围困方
       const oppTarget = opp === Color.BLACK ? bk : wt;
       for (const s of g.stones) {
-        if (isDefenseZone(s.row, opp)) oppTarget.defenseSiege += 2;
+        if (isAttackZone(s.row, opp)) oppTarget.occupationTerritory += 3;
       }
       // 围困奖励（备用规则，已存档撤销）：曾任 2×⌊组群棋子数/3⌋ 计入 siegeReward，奖励归围困方。本次不参与计分，siegeReward 恒为0。
     }
@@ -184,9 +190,11 @@ export class ScoreCalculator {
 
   private static _applyCounters(bk: ScoreBreakdown, wt: ScoreBreakdown, counters: CountersMap): void {
     for (const color of [Color.BLACK, Color.WHITE]) {
-      const c = counters.get(color) ?? { annihilate: 0, normalLost: 0, specialLost: 0 };
+      const c = counters.get(color) ?? { annihilate: 0, breakFlag: 0, stronghold: 0, normalLost: 0, specialLost: 0 };
       const b = color === Color.BLACK ? bk : wt;
-      b.defenseAnnihilate += c.annihilate * 3;
+      b.defenseAnnihilate += c.annihilate * 4; // 吃子分 +4/子
+      b.breakingReward += c.breakFlag * 6; // 破坏奖励 +6/次
+      b.strongholdReward += c.stronghold * 10; // 据点奖励 +10/次
       b.casualtyLoss -= c.normalLost;
       b.casualtySpecial -= c.specialLost * 6;
     }
@@ -197,6 +205,8 @@ export class ScoreCalculator {
       b.occupationTerritory +
       b.defenseAnnihilate +
       b.defenseSiege +
+      b.breakingReward +
+      b.strongholdReward +
       b.casualtyLoss +
       b.casualtySpecial +
       b.specialReward
