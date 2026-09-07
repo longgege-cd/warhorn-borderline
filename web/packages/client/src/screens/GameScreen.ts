@@ -144,7 +144,7 @@ export class GameScreen {
       <div class="modal-mask" id="rules-modal" hidden>
         <div class="modal-rules">
           <div class="modal-rules-header"><span>${t("rules.title")}</span><button class="btn btn-sm" id="rules-close">${t("close")}</button></div>
-          <div class="modal-rules-body"><ol>${Array.from({ length: 9 }, (_, i) => i + 1).map((n) => `<li>${t("rules." + n)}</li>`).join("")}</ol></div>
+          <div class="modal-rules-body"><ol>${Array.from({ length: 11 }, (_, i) => i + 1).map((n) => `<li>${t("rules." + n)}</li>`).join("")}</ol></div>
         </div>
       </div>
     `;

@@ -39,6 +39,8 @@ const dict: Record<string, { zh: string; en: string }> = {
   "rules.7": { zh: "每方每局可虚手 2 次，不可连续虚手；双方连续虚手自动终局。", en: "2 passes per side, no consecutive passes; two consecutive passes end the game." },
   "rules.8": { zh: "总分 = 占领 + 防御 − 战损；白方 +0.5 贴目（仅终局胜负判定）。", en: "Total = occupation + defense − casualty; White gets +0.5 komi for final result." },
   "rules.9": { zh: "兵力补充：在对方地盘/边境提吃对方普通棋子，每子补充 1 兵力（不可超出兵力上限；提吃特殊部队不补）。", en: "Piece replenishment: capturing an enemy normal stone in the enemy half/border restores 1 piece (never above the piece limit; special forces do not count)." },
+  "rules.10": { zh: "兵力补充·围困：新进入围困状态的对方棋子位于我方领土/边境时，按本手新围困的总子数每满 2 子补 1 兵力（按总数整体计算，非按包围圈独立计；余数不累计，不超上限）。", en: "Replenish via siege: newly-sieged enemy stones in your own half/border restore 1 piece per 2 total newly-sieged stones (counted together across all enclosures, not per enclosure; remainder discarded, never above the limit)." },
+  "rules.11": { zh: "禁着·劫：不得立即回提刚被提的棋子从而还原局面（仅基本单点劫，不做全局同形判定）。", en: "Ko: you may not immediately recapture the point just captured to restore the prior position (basic one-point ko only; no positional superko)." },
   "fx.sparkleOff": { zh: "关闭动画", en: "Disable FX" },
   "fx.sparkleOn": { zh: "开启动画", en: "Enable FX" },
   "feedback": { zh: "意见反馈", en: "Feedback" },
