@@ -7,13 +7,15 @@ This repository is the **web edition** (engine · server · web client) of the r
 ## Repository layout
 
 ```
-├─ web/                                    # the full web app (workspace root)
-├─ 《战争号角-边境线》规则书v9.0.md          # official rules (v9.0, Chinese)
+├─ web/                                       # the full web app (workspace root)
+├─ 《战争号角-边境线》规则书v9.0.md              # official rules (v9.0, Chinese)
+├─ Warhorn-Borderline-Rules-v9.0.md           # official rules (v9.0, English)
 ```
 
 ## Documentation
 
-- **Rules (v9.0):** [`《战争号角-边境线》规则书v9.0.md`](./《战争号角-边境线》规则书v9.0.md)
+- **Rules (v9.0, Chinese):** [`《战争号角-边境线》规则书v9.0.md`](./《战争号角-边境线》规则书v9.0.md)
+- **Rules (v9.0, English):** [`Warhorn-Borderline-Rules-v9.0.md`](./Warhorn-Borderline-Rules-v9.0.md)
 - **Web edition readme (build/run/tech):** see [`web/README.md`](./web/README.md)
 
 ## Getting started
@@ -28,4 +30,4 @@ start.bat      # Windows launcher (server + client)
 
 ## License
 
-See the LICENSE file (if present) or contact the author for terms.
+Licensed under the [MIT License](./LICENSE).
