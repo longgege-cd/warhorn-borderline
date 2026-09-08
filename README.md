@@ -4,6 +4,10 @@ A **territory-war Go variant** — two players deploy on their own half of a 19�
 
 This repository is the **web edition** (engine · server · web client) of the ruleset, currently at **v9.0**.
 
+## Play online
+
+Try the live demo: **https://warhorn.up.railway.app/**
+
 ## Repository layout
 
 ```
