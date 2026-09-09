@@ -754,11 +754,13 @@ export class GameSession {
       this.replenishTotal.set(besieger, (this.replenishTotal.get(besieger) ?? 0) + add);
     }
 
-    // 破坏奖励（规则6）：对方正在得分的包围圈失效 → mover +6/圈（嵌套每层独立）
-    const newProfitable = this._profitableEncSignatures();
+    // 破坏奖励（规则6）：对方「正在得分的包围圈」边界棋链被物理破坏 → mover +6/圈。
+    // 仅当边界棋链被提子打断（圈几何消失/变形，边界签名消失）时才触发；
+    // 围困边界子不改几何、圈仍在，不触发破坏。
+    const newGeoSigs = this._allEnclosureSigs();
     const opp = opponent(moverColor);
     for (const sig of this._movePreProfitable.get(opp)!) {
-      if (!newProfitable.get(opp)!.has(sig)) {
+      if (!newGeoSigs.has(sig)) {
         const mc = this.counters.get(moverColor)!;
         mc.breakFlag += 1;
       }
@@ -775,10 +777,20 @@ export class GameSession {
     return set;
   }
 
-  // 当前盘面「正在得分」的包围圈签名（owner → 边界棋子idx有序串）。
-  // 正在得分 = 该圈在所有者攻击区有可计分空点，且边界中不存在「被围困的圈主色棋子」。
-  // 边界含被围困棋子 → 该圈非由活棋围成、按规则6/12失效（与计分端 isEnclosureFormedBySieged 一致），
-  // 不再视为正在得分 → 围困使其失效时能触发破坏奖励 +6。
+  // 当前盘面所有纯几何包围圈的边界签名（不判死活/区域）。
+  // 边界棋链被提走 → 该签名消失 → 触发破坏奖励。
+  private _allEnclosureSigs(): Set<string> {
+    const set = new Set<string>();
+    for (const e of TerritoryDetector.enclosures(this.board)) {
+      const border = Array.from(e.borderStonesIdx).sort((a, b) => a - b);
+      set.add(border.join(","));
+    }
+    return set;
+  }
+
+  // 当前盘面「正在得分」的包围圈签名（owner → 边界棋子idx有序串）。落子前快照用。
+  // 正在得分 = 由活棋围成（边界无被围困的圈主色棋子） 且在所有者攻击区有可计分空点。
+  // 与计分端 isEnclosureFormedBySieged 一致：边界含被围困棋子 → 该圈不产围空分，也非「正在得分」。
   private _profitableEncSignatures(): Map<Color, Set<string>> {
     const map: Map<Color, Set<string>> = new Map([[Color.BLACK, new Set()], [Color.WHITE, new Set()]]);
     const siegedSet = this._siegedIdxSet();
