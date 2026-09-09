@@ -175,10 +175,10 @@ export class ScorePanel {
   /** 更新分数/计时/状态 */
   update(state: PanelState): void {
     const b = state.breakdown;
-    // 占领分：围空 + 围困(并占occupationTerritory) + 吃子(歼灭)；围困不再入防御分
-    const occ = b.occupationTerritory + b.occupationEfficiency + b.defenseAnnihilate;
-    // 防御分：破坏奖励已取消（围困已并入占领分，defenseSiege 恒为0）
-    const def = b.defenseSiege;
+    // 占领分：围空 + 围困(并占occupationTerritory)；吃子不进占领分
+    const occ = b.occupationTerritory + b.occupationEfficiency;
+    // 防御分：己方地盘吃子(歼灭 defenseAnnihilate 见引擎，非占占领分)；围困已并入占领分，defenseSiege 恒为0
+    const def = b.defenseAnnihilate + b.defenseSiege;
     const cas = Math.abs(b.casualtyLoss + b.casualtySpecial);
 
     // 总分闪烁判定

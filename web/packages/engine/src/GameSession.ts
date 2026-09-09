@@ -97,6 +97,10 @@ export class GameSession {
   private _pendingSnap: GameSnapshot | null = null;
   private static readonly MAX_UNDO = 30;
 
+  // superko：全局同形禁手所需的位置历史（数组保序供悔棋回退，Set 供 O(1) 同形判定）
+  private _positionHistory: string[] = [];
+  private _positionSet = new Set<string>();
+
   // 事件回调（替代 GDScript signal）
   onMoveCommitted?: (outcome: MoveOutcome) => void;
   onScoresChanged?: (scores: { black: ScoreBreakdown; white: ScoreBreakdown }) => void;
@@ -157,7 +161,26 @@ export class GameSession {
     this.fogRevealed.clear();
     this._undoStack = [];
     this._pendingSnap = null;
+    this._rebuildPositionHistory();
     this._invalidateCache();
+  }
+
+  // 重建位置历史为「仅当前盘面」（开局/悔棋/重开）
+  private _rebuildPositionHistory(): void {
+    this._positionHistory = [GoRules.boardKey(this.board)];
+    this._positionSet = new Set(this._positionHistory);
+  }
+
+  // 落子成功后把当前盘面登记进位置历史（供 superko 同形判定）
+  private _recordPosition(): void {
+    const key = GoRules.boardKey(this.board);
+    this._positionSet.add(key);
+    this._positionHistory.push(key);
+  }
+
+  private _restorePositionHistory(history: string[]): void {
+    this._positionHistory = [...history];
+    this._positionSet = new Set(history);
   }
 
   newGame(): void {
@@ -300,7 +323,7 @@ export class GameSession {
       return outcome;
     }
 
-    const res = GoRules.tryMove(this.board, row, col, color, this.koPoint);
+    const res = GoRules.tryMove(this.board, row, col, color, this.koPoint, this._positionSet);
     if (!res.legal) {
       outcome.ok = false;
       outcome.reason = res.reason;
@@ -312,6 +335,9 @@ export class GameSession {
     outcome.captures = res.captured;
     outcome.capturedColor = res.capturedColor;
     this.koPoint = res.koPoint;
+
+    // superko：登记落子后的盘面供后续同形判定
+    this._recordPosition();
 
     // 执行邻位暴露：对手落子在该隐子或其四邻 → 该隐子现形
     this._exposeAdjacentSpecials(color, row, col, outcome);
@@ -1085,6 +1111,7 @@ export class GameSession {
       fogRevealed: new Set(this.fogRevealed),
       strongholds: new Map(Array.from(this.strongholds.entries()).map(([k, v]) => [k, new Set(v)])),
       pendingStrongholdLoss: this._pendingStrongholdLoss,
+      positionHistory: [...this._positionHistory],
     };
   }
 
@@ -1113,6 +1140,7 @@ export class GameSession {
     this.fogRevealed = new Set(snap.fogRevealed);
     this.strongholds = new Map(Array.from(snap.strongholds.entries()).map(([k, v]) => [k, new Set(v)]));
     this._pendingStrongholdLoss = snap.pendingStrongholdLoss;
+    this._restorePositionHistory(snap.positionHistory);
     this._invalidateCache();
   }
 
@@ -1147,6 +1175,7 @@ export class GameSession {
     s.fogRevealed = new Set(this.fogRevealed);
     s.strongholds = new Map(Array.from(this.strongholds.entries()).map(([k, v]) => [k, new Set(v)]));
     s._useCache = false; // 克隆禁用缓存避免频繁失效
+    s._restorePositionHistory(this._positionHistory);
     return s;
   }
 }
@@ -1174,4 +1203,5 @@ interface GameSnapshot {
   fogRevealed: Set<number>;
   strongholds: Map<Color, Set<number>>;
   pendingStrongholdLoss: Color;
+  positionHistory: string[];
 }

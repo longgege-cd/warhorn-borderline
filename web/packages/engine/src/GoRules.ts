@@ -24,13 +24,23 @@ export class MoveResult {
 }
 
 export class GoRules {
-  // 落子 + 提子 + 自杀判定 + 劫争（会修改 board）
+  // 规范化盘面键：唯一序列化当前棋子分布（0=空/B/W），用于 superko 同形判定与历史去重
+  static boardKey(board: BoardModel): string {
+    const g = board.grid;
+    let k = "";
+    for (let i = 0; i < g.length; i++) k += g[i] === Color.EMPTY ? "." : g[i] === Color.BLACK ? "B" : "W";
+    return k;
+  }
+
+  // 落子 + 提子 + 自杀判定 + 基本劫 + superko（会修改 board）
+  // positionSet 可选：已出现过的盘面键集合。若落子（含提子后）重现其中任一盘面 → 判"全局同形禁着"并回滚。
   static tryMove(
     board: BoardModel,
     row: number,
     col: number,
     color: Color,
-    koPoint: Point = NO_KO
+    koPoint: Point = NO_KO,
+    positionSet?: Set<string>
   ): MoveResult {
     if (!board.inBounds(row, col)) return MoveResult.makeIllegal("越界");
     if (board.getAt(row, col) !== Color.EMPTY) return MoveResult.makeIllegal("该点已有棋子");
@@ -68,6 +78,13 @@ export class GoRules {
       // 防御性还原（理论上 captured 非空时 ownLibs 不会空）
       for (const s of captured) board.setAt(s.row, s.col, opp);
       return MoveResult.makeIllegal("自杀禁着");
+    }
+
+    // superko：落子（含提子）后的盘面若已在历史中出现 → 全局同形禁着，回滚
+    if (positionSet && positionSet.has(GoRules.boardKey(board))) {
+      board.setAt(row, col, Color.EMPTY);
+      for (const s of captured) board.setAt(s.row, s.col, opp);
+      return MoveResult.makeIllegal("全局同形禁着");
     }
 
     const res = new MoveResult();
