@@ -607,7 +607,6 @@ export class OnlineGameScreen {
             <tr><td class="label">${t("result.territory")}</td><td>${result.black.breakdown.occupationTerritory}</td><td>${result.white.breakdown.occupationTerritory}</td></tr>
             <tr><td class="label">${t("result.annihilate")}</td><td>${result.black.breakdown.defenseAnnihilate}</td><td>${result.white.breakdown.defenseAnnihilate}</td></tr>
             <tr><td class="label">${t("result.siege")}</td><td>${result.black.breakdown.defenseSiege}</td><td>${result.white.breakdown.defenseSiege}</td></tr>
-            <tr><td class="label">${t("result.breaking")}</td><td>${result.black.breakdown.breakingReward}</td><td>${result.white.breakdown.breakingReward}</td></tr>
             <tr><td class="label">${t("result.stronghold")}</td><td>${result.black.breakdown.strongholdReward}</td><td>${result.white.breakdown.strongholdReward}</td></tr>
             <tr><td class="label">${t("result.casualty")}</td><td>${result.black.breakdown.casualtyLoss + result.black.breakdown.casualtySpecial}</td><td>${result.white.breakdown.casualtyLoss + result.white.breakdown.casualtySpecial}</td></tr>
             <tr><td class="label">${t("result.komi")}</td><td>-${result.black.komi}</td><td>0</td></tr>

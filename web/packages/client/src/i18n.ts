@@ -1,4 +1,4 @@
-// 轻量 i18n：主菜单 + 游戏对局界面中英切换
+﻿// 轻量 i18n：主菜单 + 游戏对局界面中英切换
 export type Lang = "zh" | "en";
 
 const STORAGE_KEY = "warhorn-lang";
@@ -83,7 +83,6 @@ const dict: Record<string, { zh: string; en: string }> = {
   "log.siegeBroken": { zh: "围困解除", en: "Siege broken" },
   "log.territory": { zh: "围空", en: "Territory" },
   "log.eat": { zh: "吃子", en: "Capture" },
-  "log.breaking": { zh: "破坏围空", en: "Breaking" },
   "log.stronghold": { zh: "据点", en: "Stronghold" },
   "log.casualty": { zh: "战损", en: "Casualty" },
   "log.replenish": { zh: "补兵", en: "Reinf" },
@@ -130,7 +129,6 @@ const dict: Record<string, { zh: string; en: string }> = {
   "result.territory": { zh: "围空分", en: "Territory" },
   "result.annihilate": { zh: "歼灭分", en: "Annihilate" },
   "result.siege": { zh: "围困分", en: "Sieged" },
-  "result.breaking": { zh: "破坏奖励", en: "Breaking" },
   "result.stronghold": { zh: "据点奖励", en: "Stronghold" },
   "result.casualty": { zh: "战损分", en: "Casualty" },
   "result.komi": { zh: "贴目", en: "Komi" },

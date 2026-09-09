@@ -47,7 +47,6 @@ function calcTotal(b: ScoreBreakdown): number {
     b.defenseSiege +
     b.casualtyLoss +
     b.casualtySpecial +
-    b.breakingReward +
     b.strongholdReward
   );
 }

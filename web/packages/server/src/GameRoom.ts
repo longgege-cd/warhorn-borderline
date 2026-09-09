@@ -649,7 +649,6 @@ export class GameRoom {
       breakdown.occupationEfficiency +
       breakdown.defenseAnnihilate +
       breakdown.defenseSiege +
-      breakdown.breakingReward +
       breakdown.strongholdReward +
       breakdown.casualtyLoss +
       breakdown.casualtySpecial;

@@ -1,4 +1,4 @@
-// 对局界面：棋盘 + 双方得分板 + 控制按钮 + 终局结算
+﻿// 对局界面：棋盘 + 双方得分板 + 控制按钮 + 终局结算
 // 支持 M1 本地对战（黑白交替，同一台机器）
 // 得分板按原项目 ScorePanel.gd 5模块结构实现
 
@@ -443,7 +443,7 @@ export class GameScreen {
     const prevEntry = [...this.logEntries].reverse().find((e) => e.color === moverColor);
     const scoreBefore = prevEntry ? prevEntry.scoreAfter : 0;
 
-    // 分项增量：围困/围空/吃子/破坏围空/据点/战损
+    // 分项增量：围困/围空/吃子/据点/战损
     const b = scores[mySide];
     const pb = this.prevScoreLine?.[mySide];
     const curSiegedCnt = { black: 0, white: 0 };
@@ -461,7 +461,6 @@ export class GameScreen {
       siege: siegeDelta,
       territory: territoryDelta,
       capture: pb ? b.defenseAnnihilate - pb.defenseAnnihilate : b.defenseAnnihilate,
-      breaking: pb ? b.breakingReward - pb.breakingReward : b.breakingReward,
       stronghold: pb ? b.strongholdReward - pb.strongholdReward : b.strongholdReward,
       casualty: pb ? b.casualtyLoss - pb.casualtyLoss : b.casualtyLoss,
       replenish: this.session.replenishOf(moverColor as Color) - (this.prevReplenish[mySide] ?? 0),
@@ -740,7 +739,7 @@ export class GameScreen {
   }
 
   private _calcTotal(b: ScoreBreakdown): number {
-    return b.occupationTerritory + b.occupationEfficiency + b.defenseAnnihilate + b.defenseSiege + b.breakingReward + b.strongholdReward + b.casualtyLoss + b.casualtySpecial;
+    return b.occupationTerritory + b.occupationEfficiency + b.defenseAnnihilate + b.defenseSiege + b.strongholdReward + b.casualtyLoss + b.casualtySpecial;
   }
 
   // 当前视角可见的据点棋子索引（迷雾下对方半场被覆盖 → grid 该格为空 → 过滤不渲染）
@@ -784,7 +783,6 @@ export class GameScreen {
             <tr><td class="label">${t("result.territory")}</td><td>${result.black.breakdown.occupationTerritory}</td><td>${result.white.breakdown.occupationTerritory}</td></tr>
             <tr><td class="label">${t("result.annihilate")}</td><td>${result.black.breakdown.defenseAnnihilate}</td><td>${result.white.breakdown.defenseAnnihilate}</td></tr>
             <tr><td class="label">${t("result.siege")}</td><td>${result.black.breakdown.defenseSiege}</td><td>${result.white.breakdown.defenseSiege}</td></tr>
-            <tr><td class="label">${t("result.breaking")}</td><td>${result.black.breakdown.breakingReward}</td><td>${result.white.breakdown.breakingReward}</td></tr>
             <tr><td class="label">${t("result.stronghold")}</td><td>${result.black.breakdown.strongholdReward}</td><td>${result.white.breakdown.strongholdReward}</td></tr>
             <tr><td class="label">${t("result.casualty")}</td><td>${result.black.breakdown.casualtyLoss + result.black.breakdown.casualtySpecial}</td><td>${result.white.breakdown.casualtyLoss + result.white.breakdown.casualtySpecial}</td></tr>
             <tr><td class="label">${t("result.komi")}</td><td>-${result.black.komi}</td><td>0</td></tr>

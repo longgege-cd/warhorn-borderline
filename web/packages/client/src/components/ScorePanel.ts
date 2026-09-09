@@ -1,4 +1,4 @@
-// 得分板组件：单方分数明细 + 兵力 + 行棋方高亮 + 得分日志
+﻿// 得分板组件：单方分数明细 + 兵力 + 行棋方高亮 + 得分日志
 //
 // 设计（移植自 Godot 项目 ScorePanel.gd，适配 WEB DOM/CSS）：
 //   5 个竖向模块：
@@ -29,7 +29,6 @@ export interface ScoreLogEntry {
     siege: number; // 围困 +3/子（负=围困解除减分）
     territory: number; // 围空 +2/点（负=围空减退）
     capture: number; // 吃子 +4/子
-    breaking: number; // 破坏围空 +6/圈
     stronghold: number; // 据点 +10/据点
     casualty: number; // 战损 -1/子（负）
     replenish: number; // 补兵 +1/子（提吃防御区普通子 / 围困新入，正数）
@@ -179,8 +178,8 @@ export class ScorePanel {
     const b = state.breakdown;
     // 占领分：围空 + 围困(并占occupationTerritory) + 吃子(歼灭)；围困不再入防御分
     const occ = b.occupationTerritory + b.occupationEfficiency + b.defenseAnnihilate;
-    // 防御分：仅破坏奖励（围困已并入占领分，defenseSiege 恒为0）
-    const def = b.breakingReward + b.defenseSiege;
+    // 防御分：破坏奖励已取消（围困已并入占领分，defenseSiege 恒为0）
+    const def = b.defenseSiege;
     const cas = Math.abs(b.casualtyLoss + b.casualtySpecial);
 
     // 总分闪烁判定
@@ -245,12 +244,8 @@ export class ScorePanel {
     valEl.classList.toggle("zero", value === 0);
   }
 
-  private _determineFlashColor(b: ScoreBreakdown, delta: number): string {
-    if (delta > 0) {
-      const defDelta = b.breakingReward;
-      if (defDelta > 0) return "var(--sp-gold-bright)"; // 破坏奖励(防御分) → 亮金
-      return "var(--sp-warm-gold)"; // 占领分(围空/围困/吃子) → 暖金
-    }
+  private _determineFlashColor(_b: ScoreBreakdown, delta: number): string {
+    if (delta > 0) return "var(--sp-warm-gold)"; // 得分(围空/围困/吃子) → 暖金
     if (delta < 0) return "var(--sp-red-war)"; // 战损 → 红
     return "transparent";
   }
@@ -308,7 +303,6 @@ export class ScorePanel {
     if (b.territory > 0) parts.push(`${t("log.territory")}+${b.territory}`);
     else if (b.territory < 0) parts.push(`${t("log.territory")}-${-b.territory}`);
     if (b.capture > 0) parts.push(`${t("log.eat")}+${b.capture}`);
-    if (b.breaking > 0) parts.push(`${t("log.breaking")}+${b.breaking}`);
     if (b.stronghold > 0) parts.push(`${t("log.stronghold")}+${b.stronghold}`);
     if (b.casualty < 0) parts.push(`${t("log.casualty")}-${-b.casualty}`);
     if (b.replenish > 0) parts.push(`${t("log.replenish")}+${b.replenish}`);

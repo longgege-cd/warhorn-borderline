@@ -90,7 +90,6 @@ export interface ScoreBreakdown {
   defenseAnnihilate: number; // 吃子分 +4/子（被提子位于对方领土/边境）；展示归类计入占领分
   defenseSiege: number; // 遗留字段（v9.0 围困分已并入占领分，恒为0）
   siegeReward: number; // 围困奖励（备用规则，恒为0）
-  breakingReward: number; // 破坏奖励 +6/圈（对方正在得分的包围圈失效）
   strongholdReward: number; // 据点奖励 +10/据点（提吃对方据点）
   casualtyLoss: number; // 普通战损 -1/子（负值）
   casualtySpecial: number; // 特种战损 -6/子（负值，MVP不用）

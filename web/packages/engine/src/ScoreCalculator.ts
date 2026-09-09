@@ -1,4 +1,4 @@
-// 得分计算（v7.3 全分数动态结算）
+﻿// 得分计算（v7.3 全分数动态结算）
 // 总分 = 占领分(围空+效率奖励) + 防御分(歼灭+围困) - 战损分
 // v7.3 已取消活子分：落子本身不得分，只有围空才得分
 // 对应 GDScript c:\边境线\scripts\core\ScoreCalculator.gd (209行)
@@ -11,7 +11,6 @@ import type { ScoreBreakdown, ScoreSide, FinalResult } from "@warhorn/shared";
 
 export interface Counters {
   annihilate: number; // 吃子分累计（实际提吃次数）
-  breakFlag: number; // 破坏奖励累计（对方有效包围圈失效次数，+6/次）
   stronghold: number; // 据点奖励累计（提吃对方据点次数，+10/次）
   normalLost: number; // 普通子被提次数
   specialLost: number; // 特种部队被提次数（MVP 不用，保留接口）
@@ -21,8 +20,8 @@ export type CountersMap = Map<Color, Counters>;
 
 export function makeCounters(): CountersMap {
   return new Map([
-    [Color.BLACK, { annihilate: 0, breakFlag: 0, stronghold: 0, normalLost: 0, specialLost: 0 }],
-    [Color.WHITE, { annihilate: 0, breakFlag: 0, stronghold: 0, normalLost: 0, specialLost: 0 }],
+    [Color.BLACK, { annihilate: 0, stronghold: 0, normalLost: 0, specialLost: 0 }],
+    [Color.WHITE, { annihilate: 0, stronghold: 0, normalLost: 0, specialLost: 0 }],
   ]);
 }
 
@@ -34,7 +33,6 @@ export function makeBreakdown(): ScoreBreakdown {
     defenseAnnihilate: 0,
     defenseSiege: 0,
     siegeReward: 0,
-    breakingReward: 0,
     strongholdReward: 0,
     casualtyLoss: 0,
     casualtySpecial: 0,
@@ -190,10 +188,9 @@ export class ScoreCalculator {
 
   private static _applyCounters(bk: ScoreBreakdown, wt: ScoreBreakdown, counters: CountersMap): void {
     for (const color of [Color.BLACK, Color.WHITE]) {
-      const c = counters.get(color) ?? { annihilate: 0, breakFlag: 0, stronghold: 0, normalLost: 0, specialLost: 0 };
+      const c = counters.get(color) ?? { annihilate: 0, stronghold: 0, normalLost: 0, specialLost: 0 };
       const b = color === Color.BLACK ? bk : wt;
-      b.defenseAnnihilate += c.annihilate * 4; // 吃子分 +4/子
-      b.breakingReward += c.breakFlag * 6; // 破坏奖励 +6/次
+      b.defenseAnnihilate += c.annihilate * 4; // 吃子分 +4/子（不受被提位置限制）
       b.strongholdReward += c.stronghold * 10; // 据点奖励 +10/次
       b.casualtyLoss -= c.normalLost;
       b.casualtySpecial -= c.specialLost * 6;
@@ -205,7 +202,6 @@ export class ScoreCalculator {
       b.occupationTerritory +
       b.defenseAnnihilate +
       b.defenseSiege +
-      b.breakingReward +
       b.strongholdReward +
       b.casualtyLoss +
       b.casualtySpecial +
