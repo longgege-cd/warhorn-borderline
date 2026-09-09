@@ -776,15 +776,27 @@ export class GameSession {
   }
 
   // 当前盘面「正在得分」的包围圈签名（owner → 边界棋子idx有序串）。
-  // 正在得分 = 该圈在所有者攻击区有可计分空点。用边界组合标识一圈（破坏判断用）。
+  // 正在得分 = 该圈在所有者攻击区有可计分空点，且边界中不存在「被围困的圈主色棋子」。
+  // 边界含被围困棋子 → 该圈非由活棋围成、按规则6/12失效（与计分端 isEnclosureFormedBySieged 一致），
+  // 不再视为正在得分 → 围困使其失效时能触发破坏奖励 +6。
   private _profitableEncSignatures(): Map<Color, Set<string>> {
     const map: Map<Color, Set<string>> = new Map([[Color.BLACK, new Set()], [Color.WHITE, new Set()]]);
+    const siegedSet = this._siegedIdxSet();
     for (const e of TerritoryDetector.enclosures(this.board)) {
       let scoring = false;
       for (const p of e.points) {
         if (isAttackZone(p.row, e.color)) { scoring = true; break; }
       }
       if (!scoring) continue;
+      // 有效性：边界含被围困的圈主色棋子 → 该圈失效，不作“正在得分”
+      let effective = true;
+      for (const idx of e.borderStonesIdx) {
+        const r = Math.floor(idx / this.board.size);
+        const c = idx % this.board.size;
+        if (this.board.getAt(r, c) !== e.color) continue;
+        if (siegedSet.has(idx)) { effective = false; break; }
+      }
+      if (!effective) continue;
       const border = Array.from(e.borderStonesIdx).sort((a, b) => a - b);
       map.get(e.color)!.add(border.join(","));
     }
