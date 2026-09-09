@@ -78,7 +78,8 @@ export class GameSession {
   strongholds: Map<Color, Set<number>> = new Map([[Color.BLACK, new Set()], [Color.WHITE, new Set()]]);
   // 本手产生的待触发状态（v9.0 事件结算用）
   private _pendingStrongholdLoss: Color = Color.EMPTY; // 本手致某方据点全失
-  private _movePreSieged: Set<number> = new Set();     // 落子前围困棋子 idx 集合（围困补兵 diff）
+  // 围困补兵基准：上一手后各围困方在自己地盘围困的对方棋子总数（按总数跨手累计，每满2补1；余数跨手保留）
+  private _movePreSiegedCnt: { black: number; white: number } = { black: 0, white: 0 };
   
 
   // 逐手棋谱（在线持久化到 games.json，供对局存档/回放）
@@ -151,7 +152,7 @@ export class GameSession {
     this.lastFinalResult = null;
     this.strongholds = new Map([[Color.BLACK, new Set()], [Color.WHITE, new Set()]]);
     this._pendingStrongholdLoss = Color.EMPTY;
-    this._movePreSieged = new Set();
+    this._movePreSiegedCnt = { black: 0, white: 0 };
     this.moveHistory = [];
     this.fogRevealed.clear();
     this._undoStack = [];
@@ -704,11 +705,25 @@ export class GameSession {
     this.counters.set(moverColor, moverCounter);
   }
 
-  // 落子前快照：围困集合（供围困补兵 diff）
+  // 落子前快照：各围困方在自己地盘围困的对方棋子总数（供围困补兵 diff）
   private _capturePreMoveSnapshot(): void {
     // 克隆(AI搜索)禁用缓存，跳过昂贵的事件 diff，仅计分不计事件
     if (!this._useCache) return;
-    this._movePreSieged = this._siegedIdxSet();
+    this._movePreSiegedCnt = this._besiegeRegionCounts();
+  }
+
+  // 当前盘面：各围困方在「己方领土/边境」(isDefenseZone) 围困的对方棋子总数
+  private _besiegeRegionCounts(): { black: number; white: number } {
+    const cnt = { black: 0, white: 0 };
+    for (const g of SiegeDetector.solveDeadAlive(this.board).sieged) {
+      const besieger = opponent(g.color);
+      for (const s of g.stones) {
+        if (isDefenseZone(s.row, besieger)) {
+          cnt[besieger === Color.BLACK ? "black" : "white"] += 1;
+        }
+      }
+    }
+    return cnt;
   }
 
   // 落子后事件结算（v9.0）：围困补兵
@@ -717,42 +732,24 @@ export class GameSession {
     if (!this._useCache) return;
     this._invalidateCache();
 
-    // 围困补兵（规则1.4）：新进入围困状态的棋子，位于「围困方己方领土/边境」时，
-    // 每满 2 子补 1 兵力（余数不累计，一次性，不超上限）。
-    const newSieged = this._siegedIdxSet();
-    const siegedReplenish: Map<Color, number> = new Map([[Color.BLACK, 0], [Color.WHITE, 0]]);
-    // 围困补兵（规则1.4/规则10）：直接对「新进入围困」(newSieged − _movePreSieged) 逐个判定，
-    // 位于围困方己方领土/边境 → 每满2子补1兵（余数不累计，一次性，不超上限）。
-    // 不用「围困总数变大」做闸门：一进一出的手容易被跳过导致漏补。
-    // 围困解除不再回扣兵力：补兵定格，被提/做活逃生均不回收（按用户定案）。
-    for (const idx of newSieged) {
-      if (this._movePreSieged.has(idx)) continue; // 非新进入
-      const r = Math.floor(idx / this.board.size);
-      const c = idx % this.board.size;
-      const sc = this.board.getAt(r, c);
-      if (sc === Color.EMPTY) continue;
-      const besieger = opponent(sc);
-      if (isDefenseZone(r, besieger)) {
-        siegedReplenish.set(besieger, (siegedReplenish.get(besieger) ?? 0) + 1);
-      }
-    }
+    // 围困补兵（规则1.4）：按「当前在自己地盘围困的对方棋子总数」跨手累计，每满 2 子补 1 兵。
+    // - 总数增长且跨过偶数边界（floor(cur/2) > floor(prev/2)）时补对应兵力；
+    // - 余数跨手保留（J7/K7 各进 1 子，总数到 2 时才补 1）；
+    // - 围困解除（总数下降）不回扣兵力（补兵定格，被提/做活逃生均不回收）。
+    const cur = this._besiegeRegionCounts();
     for (const besieger of [Color.BLACK, Color.WHITE]) {
-      const delta = Math.floor((siegedReplenish.get(besieger) ?? 0) / SIEGE_REPLENISH_PER_EVERY);
-      if (delta === 0) continue;
-      const placed = this.stonesPlaced.get(besieger) ?? 0;
-      this.stonesPlaced.set(besieger, Math.max(0, placed - delta));
-      this.replenishTotal.set(besieger, (this.replenishTotal.get(besieger) ?? 0) + delta);
+      const key = besieger === Color.BLACK ? "black" : "white";
+      const prev = this._movePreSiegedCnt[key];
+      if (cur[key] > prev) {
+        const delta = Math.floor(cur[key] / SIEGE_REPLENISH_PER_EVERY) - Math.floor(prev / SIEGE_REPLENISH_PER_EVERY);
+        if (delta > 0) {
+          const placed = this.stonesPlaced.get(besieger) ?? 0;
+          this.stonesPlaced.set(besieger, Math.max(0, placed - delta));
+          this.replenishTotal.set(besieger, (this.replenishTotal.get(besieger) ?? 0) + delta);
+        }
+      }
+      this._movePreSiegedCnt[key] = cur[key];
     }
-  }
-
-  // 当前盘面被围困棋子 idx 集合
-  private _siegedIdxSet(): Set<number> {
-    const size = this.board.size;
-    const set = new Set<number>();
-    for (const g of SiegeDetector.solveDeadAlive(this.board).sieged) {
-      for (const s of g.stones) set.add(s.row * size + s.col);
-    }
-    return set;
   }
 
   // 遭遇战整手收尾：标记成功并转账，随即提交（含黎明检测）

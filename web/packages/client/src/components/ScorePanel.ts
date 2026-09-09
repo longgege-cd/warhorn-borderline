@@ -54,7 +54,6 @@ interface PanelState {
 }
 
 const COLS = "ABCDEFGHJKLMNOPQRST";
-const BOARD_SIZE = 19;
 
 export class ScorePanel {
   readonly el: HTMLElement;
@@ -320,7 +319,7 @@ export class ScorePanel {
 
   private _posLabel(e: ScoreLogEntry): string {
     if (!e.pos || e.pos.row < 0) return "—";
-    return `${COLS[e.pos.col]}${BOARD_SIZE - e.pos.row}`;
+    return `${COLS[e.pos.col]}${e.pos.row + 1}`; // engine row 为底部原点（黑在下，row0=物理第1线）
   }
 
   private _formatTime(sec: number): string {

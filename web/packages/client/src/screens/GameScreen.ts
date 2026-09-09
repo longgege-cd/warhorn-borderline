@@ -137,6 +137,7 @@ export class GameScreen {
           <button class="btn" id="btn-special" hidden>${t("special.toggle")}</button>
           <button class="btn btn-danger" id="btn-resign">${t("resign")}</button>
           <button class="btn" id="btn-new">${t("newGame")}</button>
+          <button class="btn" id="btn-save-sgf">${t("saveSgf")}</button>
           <button class="btn" id="btn-sparkle">${t("fx.sparkleOff")}</button>
         </div>
       </div>
@@ -164,6 +165,7 @@ export class GameScreen {
     root.querySelector("#btn-special")!.addEventListener("click", () => this._onSpecialToggle());
     root.querySelector("#btn-resign")!.addEventListener("click", () => this._onResign());
     root.querySelector("#btn-new")!.addEventListener("click", () => this._onNewGame());
+    root.querySelector("#btn-save-sgf")!.addEventListener("click", () => this._onSaveSGF());
     const rulesModal = root.querySelector<HTMLElement>("#rules-modal")!;
     root.querySelector("#btn-rules")!.addEventListener("click", () => { rulesModal.hidden = false; });
     root.querySelector("#rules-close")!.addEventListener("click", () => { rulesModal.hidden = true; });
@@ -874,6 +876,38 @@ export class GameScreen {
   }
 
   // ====== 工具 ======
+
+  // 导出当前对局棋谱为 SGF 文件（供保留/分析）
+  private _onSaveSGF(): void {
+    const moves = this.session.moveHistory;
+    if (!moves || moves.length === 0) {
+      this._showToast(t("noMovesSgf"));
+      return;
+    }
+    const size = this.session.board.size;
+    const letters = "abcdefghijklmnopqrst"; // 索引 = 0 基行列（左上原点），与 SGF 一致
+    let body = "";
+    for (const m of moves) {
+      const color = m.c === Color.BLACK ? "B" : m.c === Color.WHITE ? "W" : "";
+      if (!color) continue;
+      // 虚手(r/col=-1)记空落点；普通落子记实际坐标（parse: engine row 为底部原点，转 SGF 顶部字母）
+      if (m.r < 0 || m.col < 0) body += `;${color}[]`;
+      else body += `;${color}[${letters[m.col]}${letters[size - 1 - m.r]}]`;
+    }
+    const sgf = `(;GM[1]FF[4]SZ[${size}]AP[warhorn-borderline]${body})`;
+    const blob = new Blob([sgf], { type: "application/x-go-sgf;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const ts = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+    a.download = `warhorn_${ts}.sgf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    this._showToast(t("savedSgf"));
+  }
+
   private _showToast(msg: string, duration: number = 2000): void {
     const toast = document.createElement("div");
     toast.className = "toast";
