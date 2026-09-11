@@ -167,7 +167,7 @@ const THEMES: BoardTheme[] = [
     borderGlow: true,
     borderDashed: false,
     territoryBlack: "rgba(47, 95, 163, ",
-    territoryWhite: "rgba(184, 224, 232, ", // 淡淡天青围空
+    territoryWhite: "rgba(214, 159, 79, ", // 暖琥珀金：与黑方深蓝形成冷暖对峙
     blackHi: "#1e3a5f",
     blackLo: "#0d2a4f",
     blackEdge: "#0b2b5e",
@@ -183,6 +183,65 @@ const THEMES: BoardTheme[] = [
 function lightenRgb(c: [number, number, number], amt: number): string {
   return `${Math.min(255, c[0] + amt)}, ${Math.min(255, c[1] + amt)}, ${Math.min(255, c[2] + amt)}`;
 }
+
+// 2D 值噪声：格点随机值 + 平滑双线性插值，输出 [0,1] 的连续自然纹理
+function valueNoise(x: number, y: number): number {
+  const xi = Math.floor(x);
+  const yi = Math.floor(y);
+  const xf = x - xi;
+  const yf = y - yi;
+  // 缓动曲线
+  const u = xf * xf * (3 - 2 * xf);
+  const v = yf * yf * (3 - 2 * yf);
+  const hash = (i: number, j: number) => {
+    const n = Math.sin(i * 12.9898 + j * 78.233 + 43758.5453) * 43758.5453;
+    return n - Math.floor(n); // 伪随机值在 [0,1]
+  };
+  // 四角值双线性混合
+  const a = hash(xi, yi) + (hash(xi + 1, yi) - hash(xi, yi)) * u;
+  const b = hash(xi, yi + 1) + (hash(xi + 1, yi + 1) - hash(xi, yi + 1)) * u;
+  return a + (b - a) * v;
+}
+
+// 分形值噪声：多频率叠加 → 连绵的块状自然纹理（每手用 seed 偏移相位）
+function fbmNoise(x: number, y: number, octaves: number, seed: number): number {
+  let amp = 1;
+  let freq = 1;
+  let sum = 0;
+  let norm = 0;
+  for (let o = 0; o < octaves; o++) {
+    sum += amp * valueNoise(x * freq + seed * 37.17, y * freq - seed * 61.3);
+    norm += amp;
+    amp *= 0.5;
+    freq *= 2;
+  }
+  return sum / norm;
+}
+
+// 领土配色方案（独立于整体主题，只改棋盘领土底色）
+interface BoardTerritoryScheme {
+  id: string;
+  name: string;
+  territoryBlack?: string; // 黑境底色前缀（"rgba(r, g, b, "）。空 = 波浪随机
+  territoryWhite?: string; // 白境底色前缀。空 = 波浪随机
+  alphaBlack?: number; // 黑境半区底色 alpha（缺省 0.20）
+  alphaWhite?: number; // 白境半区底色 alpha（缺省 0.24）
+  wave?: boolean; // 波浪特效：不区分地盘，整盘逐格黑白随机
+}
+
+const TERRITORY_SCHEMES: BoardTerritoryScheme[] = [
+  {
+    id: "mist",
+    name: "乌云雾白",
+    territoryBlack: "rgba(70, 74, 82, ",
+    territoryWhite: "rgba(238, 241, 244, ",
+  },
+  {
+    id: "wave",
+    name: "波浪",
+    wave: true, // 整盘黑白随机，不区分地盘
+  },
+];
 
 export class BoardCanvas {
   readonly canvas: HTMLCanvasElement;
@@ -200,6 +259,11 @@ export class BoardCanvas {
   // 主题风格（按 T 切换，默认青花瓷）
   private themeId = THEMES.findIndex((t) => t.id === "porcelain");
   private theme: BoardTheme = THEMES[this.themeId];
+
+  // 领土配色方案（独立于整体主题，默认「乌云雾白」）
+  private territorySchemeId = TERRITORY_SCHEMES.findIndex((s) => s.id === "mist");
+  // 波浪随机种子：每手落子自增，使 wave 方案的黑白纹路随每手变化
+  private waveSeed = 0;
 
   // 当前盘面状态
   private grid: Uint8Array = new Uint8Array(BOARD_SIZE * BOARD_SIZE);
@@ -243,6 +307,8 @@ export class BoardCanvas {
   onInfluenceToggle?: (shown: boolean) => void;
   // 按 T 切换主题回调（用于 UI 提示当前主题名）
   onThemeToggle?: (name: string) => void;
+  // 切换领土配色按钮回调（用于 UI 提示当前配色名）
+  onSchemeChange?: (name: string) => void;
 
   constructor(opts: BoardCanvasOptions = {}) {
     this.cellSize = opts.cellSize ?? 32;
@@ -304,6 +370,37 @@ export class BoardCanvas {
     this.onThemeToggle?.(this.theme.name);
     this.staticDirty = true;
     this.render();
+  }
+
+  // 返回所有领土配色方案（供 UI 下拉填充）
+  getTerritorySchemes(): Array<{ id: string; name: string }> {
+    return TERRITORY_SCHEMES.map((s) => ({ id: s.id, name: s.name }));
+  }
+
+  // 返回当前配色 id
+  getTerritorySchemeId(): string {
+    return TERRITORY_SCHEMES[this.territorySchemeId].id;
+  }
+
+  // 切换领土配色方案（只改领土底色，不影响整体主题）
+  setTerritoryScheme(id: string): void {
+    const idx = TERRITORY_SCHEMES.findIndex((s) => s.id === id);
+    if (idx < 0) return;
+    this.territorySchemeId = idx;
+    this.onSchemeChange?.(TERRITORY_SCHEMES[idx].name);
+    this.staticDirty = true;
+    this.render();
+  }
+
+  // 当前领土底色配色（波浪方案无独立黑/白底色，调用方需自行处理）
+  private _terrColors(): { black: string; white: string; aBlack: number; aWhite: number } {
+    const s = TERRITORY_SCHEMES[this.territorySchemeId];
+    return {
+      black: s.territoryBlack ?? "rgba(18, 20, 26, ",
+      white: s.territoryWhite ?? "rgba(248, 250, 255, ",
+      aBlack: s.alphaBlack ?? 0.2,
+      aWhite: s.alphaWhite ?? 0.24,
+    };
   }
 
   // 空格键切换势力热力图显示
@@ -368,8 +465,9 @@ export class BoardCanvas {
     // 重算打吃状态与势力图（仅显示辅助）
     this.atariStones = atariStoneSet(this._board());
     this.influence = influenceRenderData(this._board());
-    // 盘面变化 → 静态层需重建
+    // 盘面变化 → 静态层需重建；每手自增波浪种子，让 wave 纹路随每手变化
     this.staticDirty = true;
+    this.waveSeed++;
     // 据点出现时确保呼吸动画循环持续（含无其他活跃特效的情况）
     if (this.strongholds.size > 0) this._startAnimLoop();
     this.render();
@@ -477,13 +575,12 @@ export class BoardCanvas {
 
     // 布局阶段：领土辉光呼吸（叠加在静态领土底色之上）
     if (this.deployPhase) {
-      const th = this.theme;
       const topH = cs * 9;
       const botY = pad + cs * 9;
       const glow = 0.04 + 0.03 * (0.5 + 0.5 * Math.sin(this.time * 2.5));
-      ctx.fillStyle = `${th.territoryBlack}${glow.toFixed(3)})`;
+      ctx.fillStyle = `${this._terrColors().black}${glow.toFixed(3)})`;
       ctx.fillRect(pad, pad, cs * 18, topH);
-      ctx.fillStyle = `${th.territoryWhite}${glow.toFixed(3)})`;
+      ctx.fillStyle = `${this._terrColors().white}${glow.toFixed(3)})`;
       ctx.fillRect(pad, botY, cs * 18, cs * 18 - topH);
     }
 
@@ -543,14 +640,35 @@ export class BoardCanvas {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, this.staticCanvas.width, this.staticCanvas.height);
 
-    // 2. 领土方格染色（柔和区分黑白领土；棋子画在其上，不与冲突）
+    // 2. 领土方格染色：默认柔和高亮半区（区分黑白领土）；「波浪」方案则整盘随机黑白
     const midY = pad + 9 * cs; // 边境线（第10行）中心
-    // 黑方领土：冷调深蓝染色（行0-8，延伸至边境线）
-    ctx.fillStyle = `${th.territoryBlack}0.16)`;
-    ctx.fillRect(pad, pad, cs * 18, cs * 9);
-    // 白方领土：暖调金黄染色（行10-18，延伸至边境线）
-    ctx.fillStyle = `${th.territoryWhite}0.20)`;
-    ctx.fillRect(pad, midY, cs * 18, cs * 9);
+    const scheme = TERRITORY_SCHEMES[this.territorySchemeId];
+    const fillTerritory = (r0: number, r1: number, color: string, alpha: number) => {
+      ctx.fillStyle = `${color}${alpha.toFixed(2)})`;
+      for (let r = r0; r <= r1; r++) {
+        for (let c = 0; c < size - 1; c++) {
+          ctx.fillRect(pad + c * cs + 1, pad + r * cs + 1, cs - 2, cs - 2);
+        }
+      }
+    };
+    if (scheme.wave) {
+      // 波浪特效：不区分地盘，分形值噪声 → 连绵的黑白块状自然纹理
+      // 每手用 waveSeed 偏移相位 → 纹路随每手整体流动
+      const freq = 0.20; // 频率越低，斑块越大越连绵
+      const seed = this.waveSeed;
+      for (let r = 0; r < size - 1; r++) {
+        for (let c = 0; c < size - 1; c++) {
+          const n = fbmNoise((c + 0.5) * freq, (r + 0.5) * freq, 4, seed);
+          const rgb = n > 0.5 ? "248, 250, 255" : "10, 12, 16";
+          ctx.fillStyle = `rgba(${rgb}, 0.22)`;
+          ctx.fillRect(pad + c * cs + 1, pad + r * cs + 1, cs - 2, cs - 2);
+        }
+      }
+    } else {
+      const tcol = this._terrColors();
+      fillTerritory(0, BORDER_ROW - 1, tcol.black, tcol.aBlack); // 黑方领土：行0-8
+      fillTerritory(BORDER_ROW + 1, size - 1, tcol.white, tcol.aWhite); // 白方领土：行10-18
+    }
 
     // 3. 网格线 + 边框加粗
     ctx.strokeStyle = th.grid;
@@ -612,8 +730,8 @@ export class BoardCanvas {
         // 使用主题围空色：黑围空=深蓝，白围空=淡淡天青
         const color =
           enc.color === Color.BLACK
-            ? `${this.theme.territoryBlack}0.25)`
-            : `${this.theme.territoryWhite}0.68)`;
+            ? `${this._terrColors().black}0.25)`
+            : `${this._terrColors().white}0.68)`;
         ctx.fillStyle = color;
         for (const p of enc.points) {
           ctx.fillRect(pad + p.col * cs - cs / 2, pad + p.row * cs - cs / 2, cs, cs);
@@ -689,8 +807,8 @@ export class BoardCanvas {
 
     // 染成领跑方领土同色系、略深以区分侵占区（与半区底色一致协调）
     ctx.fillStyle = leader === Color.BLACK
-      ? `${this.theme.territoryBlack}0.24)`
-      : `${this.theme.territoryWhite}0.28)`;
+      ? `${this._terrColors().black}0.24)`
+      : `${this._terrColors().white}0.28)`;
 
     for (let cr = crStart; cr >= crMin && cr <= crMax; cr += sign) {
       for (let cc = 0; cc < size - 1; cc++) {

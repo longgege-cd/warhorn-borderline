@@ -94,6 +94,9 @@ export class OnlineGameScreen {
     this.boardCanvas.onThemeToggle = (name) => {
       this._showToast(tpl("theme.switched", tThemeName(name)));
     };
+    this.boardCanvas.onSchemeChange = (name) => {
+      this._showToast(tpl("scheme.switched", tThemeName(name)));
+    };
     this.blackPanel = new ScorePanel("black");
     this.whitePanel = new ScorePanel("white");
     this.el = this._build();
@@ -127,6 +130,10 @@ export class OnlineGameScreen {
         <div class="game-topbar">
           <span class="topbar-title">${tpl("title.online", topRole)}</span>
           <span class="topbar-status" id="status"></span>
+          <label class="territory-scheme-ctl">
+            <span>${t("territory.label")}</span>
+            <select id="territory-scheme"></select>
+          </label>
           <button class="btn btn-sm" id="btn-rules">${t("rules.btn")}</button>
         </div>
         <div class="board-wrapper">
@@ -160,6 +167,19 @@ export class OnlineGameScreen {
     this.passBtn = root.querySelector("#btn-pass")!;
     this.resignBtn = root.querySelector("#btn-resign")!;
     this.specialBtn = root.querySelector("#btn-special")!;
+
+    // 领土配色下拉（沿用当前配色，切换即生效）
+    const schemeSel = root.querySelector<HTMLSelectElement>("#territory-scheme")!;
+    for (const s of this.boardCanvas.getTerritorySchemes()) {
+      const opt = document.createElement("option");
+      opt.value = s.id;
+      opt.textContent = tThemeName(s.name);
+      if (s.id === this.boardCanvas.getTerritorySchemeId()) opt.selected = true;
+      schemeSel.appendChild(opt);
+    }
+    schemeSel.addEventListener("change", () => {
+      this.boardCanvas.setTerritoryScheme(schemeSel.value);
+    });
 
     root.querySelector("#btn-pass")!.addEventListener("click", () => this._onPass());
     root.querySelector("#btn-special")!.addEventListener("click", () => this._onSpecialToggle());

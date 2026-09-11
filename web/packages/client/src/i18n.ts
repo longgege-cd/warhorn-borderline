@@ -1,4 +1,4 @@
-﻿// 轻量 i18n：主菜单 + 游戏对局界面中英切换
+// 轻量 i18n：主菜单 + 游戏对局界面中英切换
 export type Lang = "zh" | "en";
 
 const STORAGE_KEY = "warhorn-lang";
@@ -96,6 +96,10 @@ const dict: Record<string, { zh: string; en: string }> = {
   "theme.pixel": { zh: "动画像素风", en: "Pixel Anime" },
   "theme.obsidian": { zh: "黑曜石", en: "Obsidian" },
   "theme.porcelain": { zh: "青花瓷", en: "Blue Porcelain" },
+  "territory.label": { zh: "领土配色", en: "Territory Color" },
+  "scheme.mist": { zh: "乌云雾白", en: "Mist" },
+  "scheme.wave": { zh: "波浪", en: "Wave" },
+  "scheme.switched": { zh: "领土配色：{0}", en: "Territory: {0}" },
   "aiThinking": { zh: "AI 思考中...", en: "AI is thinking..." },
   "battleStart": { zh: "正式开战！", en: "Battle begins!" },
   "passed": { zh: "{0}方虚手", en: "{0} passed" },
@@ -264,6 +268,8 @@ const themeKeyMap: Record<string, string> = {
   "动画像素风": "theme.pixel",
   "黑曜石": "theme.obsidian",
   "青花瓷": "theme.porcelain",
+  "乌云雾白": "scheme.mist",
+  "波浪": "scheme.wave",
 };
 
 export function tThemeName(name: string): string {
